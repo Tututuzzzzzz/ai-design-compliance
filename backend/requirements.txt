@@ -1,0 +1,17 @@
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20
+pydantic==2.10.5
+pydantic-settings==2.7.1
+httpx==0.28.1
+Pillow==11.1.0
+pillow-heif==0.21.0
+psd-tools==1.10.4
+pypdfium2==4.30.0
+rapidfuzz==3.11.0
+python-slugify==8.0.4
+openpyxl==3.1.5
+# messages.parse() + output_config/effort need a recent SDK.
+anthropic>=0.122.0
+google-genai>=1.0.0
+tenacity==9.0.0

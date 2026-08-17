@@ -1,0 +1,34 @@
+services:
+  api:
+    build:
+      context: ./backend
+      args:
+        # Set to "false" for a ~2 min faster build; the pipeline then uses
+        # vision-model OCR instead of the local engine.
+        WITH_OCR: "true"
+    env_file: .env
+    environment:
+      DATA_DIR: /srv/var
+      DB_PATH: /srv/var/compliance.db
+      USPTO_DB_PATH: /srv/var/uspto.db
+    volumes:
+      - ./backend/var:/srv/var
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  web:
+    build:
+      context: ./frontend
+    environment:
+      BACKEND_URL: http://api:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy

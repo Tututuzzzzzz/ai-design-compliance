@@ -1,0 +1,61 @@
+{
+  "tabs": {
+    "upload": "Tải lên tệp",
+    "csv": "Nhập CSV",
+    "link": "Nhập liên kết",
+    "folder": "Kết nối thư mục"
+  },
+  "hints": {
+    "upload": "PNG, JPG, WEBP, PSD, AI, PDF — một hoặc nhiều",
+    "csv": "Danh sách tên tệp hoặc URL để xử lý hàng loạt",
+    "link": "Drive / Dropbox / S3 / URL hình ảnh trực tiếp",
+    "folder": "Quét toàn bộ thư mục Google Drive"
+  },
+  "labels": {
+    "designFiles": "Tệp thiết kế",
+    "csvManifest": "CSV manifest",
+    "attachments": "Tệp đính kèm (tùy chọn)",
+    "urls": "Liên kết URL",
+    "googleDriveFolder": "Thư mục Google Drive",
+    "filesSelected": "tệp được chọn",
+    "designDetail": "Chi tiết thiết kế",
+    "batches": "Lô xử lý",
+    "noBatches": "Chưa có lô xử lý nào.",
+    "batch": "Lô",
+    "input": "Đầu vào",
+    "progress": "Tiến độ",
+    "safe": "An toàn",
+    "risky": "Rủi ro",
+    "blocked": "Bị chặn",
+    "status": "Trạng thái"
+  },
+  "buttons": {
+    "submit": "Phân tích",
+    "close": "Đóng",
+    "showAnnotated": "Hiển thị các vùng vi phạm",
+    "showOriginal": "Hiển thị bản gốc",
+    "refresh": "Làm mới"
+  },
+  "messages": {
+    "analysisInProgress": "Đang phân tích…",
+    "chooseDesignFile": "Chọn ít nhất một tệp thiết kế",
+    "chooseCsvFile": "Chọn tệp CSV",
+    "pasteUrl": "Dán ít nhất một URL",
+    "pasteGoogleDrive": "Dán liên kết thư mục Google Drive",
+    "marked": "vùng được đánh dấu",
+    "confidence": "Độ tin cậy",
+    "provider": "Nhà cung cấp",
+    "duration": "s"
+  },
+  "errors": {
+    "error": "Lỗi"
+  },
+  "header": {
+    "title": "AI Design Compliance Agent",
+    "tagline": "Phát hiện niche · rà soát trademark & bản quyền · SAFE / RISKY / BLOCKED"
+  },
+  "nav": {
+    "new": "Phân tích mới",
+    "batches": "Lô xử lý"
+  }
+}

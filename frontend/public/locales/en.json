@@ -1,0 +1,61 @@
+{
+  "tabs": {
+    "upload": "Upload files",
+    "csv": "Import CSV",
+    "link": "Import links",
+    "folder": "Connect folder"
+  },
+  "hints": {
+    "upload": "PNG, JPG, WEBP, PSD, AI, PDF — one or many",
+    "csv": "A manifest of filenames or URLs for batch processing",
+    "link": "Drive / Dropbox / S3 / direct image URLs",
+    "folder": "Scan an entire Google Drive folder"
+  },
+  "labels": {
+    "designFiles": "Design files",
+    "csvManifest": "CSV manifest",
+    "attachments": "Attachments (optional)",
+    "urls": "URLs",
+    "googleDriveFolder": "Google Drive folder",
+    "filesSelected": "file(s) selected",
+    "designDetail": "Design Detail",
+    "batches": "Batches",
+    "noBatches": "No batches yet.",
+    "batch": "Batch",
+    "input": "Input",
+    "progress": "Progress",
+    "safe": "Safe",
+    "risky": "Risky",
+    "blocked": "Blocked",
+    "status": "Status"
+  },
+  "buttons": {
+    "submit": "Analyse",
+    "close": "Close",
+    "showAnnotated": "Show violation boxes",
+    "showOriginal": "Show original",
+    "refresh": "Refresh"
+  },
+  "messages": {
+    "analysisInProgress": "Analysis in progress…",
+    "chooseDesignFile": "Choose at least one design file",
+    "chooseCsvFile": "Choose a CSV file",
+    "pasteUrl": "Paste at least one URL",
+    "pasteGoogleDrive": "Paste a Google Drive folder link",
+    "marked": "region(s) marked",
+    "confidence": "Confidence",
+    "provider": "Provider",
+    "duration": "s"
+  },
+  "errors": {
+    "error": "Error"
+  },
+  "header": {
+    "title": "AI Design Compliance Agent",
+    "tagline": "Niche detection · trademark & copyright screening · SAFE / RISKY / BLOCKED"
+  },
+  "nav": {
+    "new": "New analysis",
+    "batches": "Batches"
+  }
+}
