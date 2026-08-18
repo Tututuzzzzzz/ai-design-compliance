@@ -8,9 +8,12 @@ same `OCRLine` shape, so downstream code doesn't care which ran.
 from __future__ import annotations
 
 import logging
+import queue
+import threading
 from functools import lru_cache
 from pathlib import Path
 
+from ..config import settings
 from ..models import BBox, OCRLine
 
 log = logging.getLogger(__name__)
@@ -36,11 +39,29 @@ def extract(image_path: Path, width: int, height: int) -> list[OCRLine]:
     if engine is None:
         return []
 
-    try:
-        result, _ = engine(str(image_path))
-    except Exception as exc:  # pragma: no cover
-        log.warning("OCR failed on %s: %s", image_path.name, exc)
-        return []
+    attempts = max(1, settings.ocr_max_attempts)
+    result = None
+    for attempt in range(attempts):
+        try:
+            result, _ = _run_with_timeout(engine, str(image_path), settings.ocr_timeout_s)
+            break
+        except TimeoutError:
+            log.warning(
+                "OCR timed out on %s (attempt %d/%d)",
+                image_path.name,
+                attempt + 1,
+                attempts,
+            )
+        except Exception as exc:  # pragma: no cover
+            log.warning(
+                "OCR failed on %s (attempt %d/%d): %s",
+                image_path.name,
+                attempt + 1,
+                attempts,
+                exc,
+            )
+        if attempt + 1 >= attempts:
+            return []
 
     if not result:
         return []
@@ -72,3 +93,25 @@ def _to_bbox(quad, width: int, height: int) -> BBox | None:
         return None
 
     return BBox(x=x0 / width, y=y0 / height, w=(x1 - x0) / width, h=(y1 - y0) / height)
+
+
+def _run_with_timeout(engine, image_path: str, timeout_s: float):
+    out: "queue.Queue[tuple[object, Exception | None]]" = queue.Queue(maxsize=1)
+
+    def _runner() -> None:
+        try:
+            out.put((engine(image_path), None))
+        except Exception as exc:  # pragma: no cover
+            out.put((None, exc))
+
+    worker = threading.Thread(target=_runner, name="rapidocr-call", daemon=True)
+    worker.start()
+    worker.join(max(0.1, timeout_s))
+
+    if worker.is_alive():
+        raise TimeoutError(f"RapidOCR timed out after {timeout_s}s")
+
+    result, err = out.get_nowait()
+    if err is not None:
+        raise err
+    return result

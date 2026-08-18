@@ -4,19 +4,20 @@ import { useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import type { Design, Finding } from "@/lib/types";
 
-function Evidence({ f }: { f: Finding }) {
-  if (!f.evidence?.length) return null;
+function Evidence({ f, t }: { f: Finding; t: (key: string) => string }) {
+  const visibleEvidence = (f.evidence ?? []).filter((e) => e.source !== "vision_model");
+  if (!visibleEvidence.length) return null;
   return (
     <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: "var(--muted)" }}>
-      {f.evidence.map((e, i) => (
+      {visibleEvidence.map((e, i) => (
         <li key={i}>
-          <strong>{e.source.replace(/_/g, " ")}</strong>: {e.detail}
+          <strong>{t(`evidence.${e.source}`)}</strong>: {e.detail}
           {e.reference_id && ` (#${e.reference_id})`}
           {e.url && (
             <>
               {" — "}
               <a href={e.url} target="_blank" rel="noreferrer">
-                verify
+                {t("detail.verify")}
               </a>
             </>
           )}
@@ -40,7 +41,9 @@ export default function DesignDetail({ design, onClose }: { design: Design; onCl
           <div>
             <h2 style={{ marginBottom: 4 }}>{design.filename}</h2>
             <div className="row" style={{ gap: 8 }}>
-              <span className={`badge ${r?.verdict ?? "PENDING"}`}>{r?.verdict ?? design.status}</span>
+              <span className={`badge ${r?.verdict ?? "PENDING"}`}>
+                {r?.verdict ? t(`verdict.${r.verdict}`) : t(`status.${design.status}`)}
+              </span>
               {r && <span className="muted">{t("messages.confidence")} {r.confidence}%</span>}
               {r && <span className="muted">· {r.provider}</span>}
               {r && <span className="muted">· {(r.duration_ms / 1000).toFixed(1)}{t("messages.duration")}</span>}
@@ -82,37 +85,37 @@ export default function DesignDetail({ design, onClose }: { design: Design; onCl
                   )}
                 </>
               ) : (
-                <p className="muted">No preview available.</p>
+                <p className="muted">{t("detail.noPreview")}</p>
               )}
 
-              <h3 style={{ marginTop: 20 }}>Niche</h3>
+              <h3 style={{ marginTop: 20 }}>{t("detail.niche")}</h3>
               <table>
                 <tbody>
                   <tr>
-                    <th>Primary</th>
+                    <th>{t("detail.primary")}</th>
                     <td>{r.niche.primary}</td>
                   </tr>
                   {r.niche.sub_niche && (
                     <tr>
-                      <th>Sub-niche</th>
+                      <th>{t("detail.subNiche")}</th>
                       <td>{r.niche.sub_niche}</td>
                     </tr>
                   )}
                   {r.niche.audience && (
                     <tr>
-                      <th>Audience</th>
+                      <th>{t("detail.audience")}</th>
                       <td>{r.niche.audience}</td>
                     </tr>
                   )}
                   {r.niche.style.length > 0 && (
                     <tr>
-                      <th>Style</th>
+                      <th>{t("detail.style")}</th>
                       <td>{r.niche.style.join(", ")}</td>
                     </tr>
                   )}
                   {r.niche.motifs.length > 0 && (
                     <tr>
-                      <th>Motifs</th>
+                      <th>{t("detail.motifs")}</th>
                       <td>{r.niche.motifs.join(", ")}</td>
                     </tr>
                   )}
@@ -121,23 +124,23 @@ export default function DesignDetail({ design, onClose }: { design: Design; onCl
 
               {r.ocr_text && (
                 <>
-                  <h3 style={{ marginTop: 20 }}>Text in design</h3>
+                  <h3 style={{ marginTop: 20 }}>{t("detail.textInDesign")}</h3>
                   <pre className="reasoning">{r.ocr_text}</pre>
                 </>
               )}
             </div>
 
             <div>
-              <h3>Findings ({r.findings.length})</h3>
+              <h3>{t("detail.findings")} ({r.findings.length})</h3>
               {r.findings.length === 0 && (
-                <div className="ok">No IP or policy issues detected in this design.</div>
+                <div className="ok">{t("detail.noIssues")}</div>
               )}
               {r.findings.map((f, i) => (
                 <div key={i} className={`finding ${f.severity}`}>
                   <div className="row" style={{ gap: 8 }}>
-                    <span className={`sev ${f.severity}`}>{f.severity}</span>
+                    <span className={`sev ${f.severity}`}>{t(`severity.${f.severity}`)}</span>
                     <span className="muted" style={{ fontSize: 12 }}>
-                      {f.category.replace(/_/g, " ")} · {Math.round(f.confidence * 100)}%
+                      {t(`categories.${f.category}`)} · {Math.round(f.confidence * 100)}%
                     </span>
                   </div>
                   <div className="t" style={{ marginTop: 6 }}>
@@ -146,33 +149,33 @@ export default function DesignDetail({ design, onClose }: { design: Design; onCl
                   <p>{f.description}</p>
                   {f.rights_holder && (
                     <p style={{ marginTop: 0 }}>
-                      <strong>Rights holder:</strong> {f.rights_holder}
+                      <strong>{t("detail.rightsHolder")}:</strong> {f.rights_holder}
                     </p>
                   )}
                   {(f.location_hint || f.bbox) && (
                     <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-                      Location: {f.location_hint}
+                      {t("detail.location")}: {f.location_hint}
                       {f.bbox &&
-                        ` — box x=${f.bbox.x.toFixed(2)} y=${f.bbox.y.toFixed(2)} w=${f.bbox.w.toFixed(2)} h=${f.bbox.h.toFixed(2)}`}
+                        ` — ${t("detail.box")} x=${f.bbox.x.toFixed(2)} y=${f.bbox.y.toFixed(2)} w=${f.bbox.w.toFixed(2)} h=${f.bbox.h.toFixed(2)}`}
                     </p>
                   )}
-                  <Evidence f={f} />
+                  <Evidence f={f} t={t} />
                   <div className="fix">
-                    <strong>How to fix:</strong> {f.remediation}
+                    <strong>{t("detail.howToFix")}:</strong> {f.remediation}
                   </div>
                 </div>
               ))}
 
               {r.trademark_hits.length > 0 && (
                 <>
-                  <h3 style={{ marginTop: 22 }}>Register matches</h3>
+                  <h3 style={{ marginTop: 22 }}>{t("detail.registerMatches")}</h3>
                   <table>
                     <thead>
                       <tr>
-                        <th>Text</th>
-                        <th>Registered mark</th>
-                        <th>Sim.</th>
-                        <th>Owner</th>
+                        <th>{t("detail.text")}</th>
+                        <th>{t("detail.registeredMark")}</th>
+                        <th>{t("detail.similarity")}</th>
+                        <th>{t("detail.owner")}</th>
                         <th />
                       </tr>
                     </thead>
@@ -197,12 +200,12 @@ export default function DesignDetail({ design, onClose }: { design: Design; onCl
                 </>
               )}
 
-              <h3 style={{ marginTop: 22 }}>Reasoning</h3>
+              <h3 style={{ marginTop: 22 }}>{t("detail.reasoning")}</h3>
               <pre className="reasoning">{r.reasoning}</pre>
 
               {r.policy_notes.length > 0 && (
                 <>
-                  <h3 style={{ marginTop: 22 }}>Policy notes</h3>
+                  <h3 style={{ marginTop: 22 }}>{t("detail.policyNotes")}</h3>
                   <ul className="muted" style={{ paddingLeft: 18, fontSize: 12.5 }}>
                     {r.policy_notes.map((n, i) => (
                       <li key={i}>{n}</li>

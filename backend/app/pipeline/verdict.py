@@ -9,6 +9,10 @@ the actual rule that fired.
 from __future__ import annotations
 
 from ..models import Evidence, Finding, RiskCategory, Severity, Verdict
+from .i18n import DEFAULT_LANG, Lang, t
+from .i18n import category as category_label
+from .i18n import severity as severity_label
+from .i18n import verdict as verdict_label
 from .rules import rank
 from .trademark import TrademarkHit
 
@@ -21,7 +25,7 @@ BLOCK_MIN_CONFIDENCE = 0.75
 
 
 def merge_trademark_hits(
-    findings: list[Finding], hits: list[TrademarkHit]
+    findings: list[Finding], hits: list[TrademarkHit], lang: Lang = DEFAULT_LANG
 ) -> list[Finding]:
     """Attach register evidence to text findings, and raise new ones for OCR text
     the model did not flag but the register matches."""
@@ -34,7 +38,7 @@ def merge_trademark_hits(
         matched = [h for h in remaining if h.query.strip().lower() == needle]
         for hit in matched:
             remaining.remove(hit)
-            f.evidence.append(_hit_evidence(hit))
+            f.evidence.append(_hit_evidence(hit, lang))
             if hit.similarity >= TM_BLOCK_SIMILARITY and rank(f.severity) < rank(Severity.HIGH):
                 f.severity = Severity.HIGH
             f.confidence = max(f.confidence, min(0.99, hit.similarity / 100))
@@ -50,40 +54,37 @@ def merge_trademark_hits(
         findings.append(
             Finding(
                 category=RiskCategory.TRADEMARKED_PHRASE,
-                title=f'Text "{hit.query}" matches registered mark "{hit.mark_text}"',
-                description=(
-                    f'The design carries the text "{hit.query}", which matches the '
-                    f'registered mark "{hit.mark_text}" at {hit.similarity}% similarity'
-                    + (f" (owner: {hit.owner})" if hit.owner else "")
-                    + (f", status {hit.status}" if hit.status else "")
-                    + ". Registered wordmarks apply to the goods in their class, so "
-                    "printing the phrase on apparel can infringe even without a logo."
+                title=t("tm.title", lang, query=hit.query, mark=hit.mark_text),
+                description=t(
+                    "tm.description",
+                    lang,
+                    query=hit.query,
+                    mark=hit.mark_text,
+                    similarity=hit.similarity,
+                    owner=t("tm.owner_suffix", lang, owner=hit.owner) if hit.owner else "",
+                    status=t("tm.status_suffix", lang, status=hit.status) if hit.status else "",
                 ),
                 severity=severity,
                 confidence=min(0.99, hit.similarity / 100),
                 rights_holder=hit.owner,
                 matched_text=hit.query,
-                location_hint="see OCR text region",
-                evidence=[_hit_evidence(hit)],
-                remediation=(
-                    f'Remove or reword "{hit.query}". Rephrasing to a descriptive, '
-                    "non-identical wording that does not function as a brand is usually "
-                    "enough; verify against the register before listing."
-                ),
+                location_hint=t("tm.location_hint", lang),
+                evidence=[_hit_evidence(hit, lang)],
+                remediation=t("tm.remediation", lang, query=hit.query),
             )
         )
 
     return findings
 
 
-def _hit_evidence(hit: TrademarkHit) -> Evidence:
-    bits = [f'register match "{hit.mark_text}" @ {hit.similarity}%']
+def _hit_evidence(hit: TrademarkHit, lang: Lang = DEFAULT_LANG) -> Evidence:
+    bits = [t("hit.match", lang, mark=hit.mark_text, similarity=hit.similarity)]
     if hit.status:
-        bits.append(f"status {hit.status}")
+        bits.append(t("hit.status", lang, status=hit.status))
     if hit.owner:
-        bits.append(f"owner {hit.owner}")
+        bits.append(t("hit.owner", lang, owner=hit.owner))
     if hit.classes:
-        bits.append(f"class {hit.classes}")
+        bits.append(t("hit.classes", lang, classes=hit.classes))
     return Evidence(
         source="uspto_local_index" if hit.source == "uspto_local_index" else "uspto_live_api",
         detail="; ".join(bits),
@@ -96,7 +97,9 @@ def _hit_evidence(hit: TrademarkHit) -> Evidence:
 _REGISTER_SOURCES = {"uspto_local_index", "uspto_live_api", "euipo_api"}
 
 
-def cap_unverified_phrases(findings: list[Finding]) -> list[Finding]:
+def cap_unverified_phrases(
+    findings: list[Finding], lang: Lang = DEFAULT_LANG
+) -> list[Finding]:
     """An unattributed phrase is a guess; an attributed one is a claim.
 
     Vision models will confidently label ordinary shirt text ("DOG MOM",
@@ -126,35 +129,17 @@ def cap_unverified_phrases(findings: list[Finding]) -> list[Finding]:
 
         f.severity = Severity.MEDIUM
         f.confidence = min(f.confidence, 0.6)
-        f.description += (
-            " — NOTE: no trademark register confirmed this phrase and no rights holder "
-            "could be named, so it is reported as needing review rather than as a "
-            "confirmed registration. Common descriptive shirt text is frequently not "
-            "registered at all."
-        )
-        f.evidence.append(
-            Evidence(
-                source="policy_rule",
-                detail=(
-                    "No register match and no named rights holder — severity capped at "
-                    "medium so an unattributed phrase cannot block a listing on its own."
-                ),
-            )
-        )
+        f.description += t("cap.note", lang)
+        f.evidence.append(Evidence(source="policy_rule", detail=t("cap.evidence", lang)))
     return findings
 
 
-def decide(findings: list[Finding]) -> tuple[Verdict, int, str]:
+def decide(
+    findings: list[Finding], lang: Lang = DEFAULT_LANG
+) -> tuple[Verdict, int, str]:
     """Returns (verdict, confidence 0-100, reasoning)."""
     if not findings:
-        return (
-            Verdict.SAFE,
-            88,
-            "No copyrighted characters, brand marks, registered phrases, "
-            "recognisable public figures, protected artwork, or prohibited content were "
-            "detected. The design reads as original work on a generic subject, so there "
-            "is nothing to block a listing.",
-        )
+        return Verdict.SAFE, 88, t("reason.clean", lang)
 
     criticals = [f for f in findings if f.severity is Severity.CRITICAL]
     highs = [f for f in findings if f.severity is Severity.HIGH]
@@ -170,9 +155,10 @@ def decide(findings: list[Finding]) -> tuple[Verdict, int, str]:
             Verdict.BLOCKED,
             _confidence(Verdict.BLOCKED, findings, top),
             _explain(
-                "BLOCKED",
-                f"a clearly protected element was reproduced: {top.title}",
+                Verdict.BLOCKED,
+                t("headline.blocked.critical", lang, title=top.title),
                 findings,
+                lang,
             ),
         )
 
@@ -182,9 +168,10 @@ def decide(findings: list[Finding]) -> tuple[Verdict, int, str]:
             Verdict.BLOCKED,
             _confidence(Verdict.BLOCKED, findings, top),
             _explain(
-                "BLOCKED",
-                f"multiple independent high-severity issues were found, led by: {top.title}",
+                Verdict.BLOCKED,
+                t("headline.blocked.multiple", lang, title=top.title),
                 findings,
+                lang,
             ),
         )
 
@@ -193,7 +180,12 @@ def decide(findings: list[Finding]) -> tuple[Verdict, int, str]:
         return (
             Verdict.BLOCKED,
             _confidence(Verdict.BLOCKED, findings, top),
-            _explain("BLOCKED", f"a high-severity issue was found: {top.title}", findings),
+            _explain(
+                Verdict.BLOCKED,
+                t("headline.blocked.single", lang, title=top.title),
+                findings,
+                lang,
+            ),
         )
 
     if highs or criticals:
@@ -202,10 +194,15 @@ def decide(findings: list[Finding]) -> tuple[Verdict, int, str]:
             Verdict.RISKY,
             _confidence(Verdict.RISKY, findings, top),
             _explain(
-                "RISKY",
-                f"a serious issue was detected but with low detection confidence "
-                f"({top.confidence:.0%}): {top.title}. A human should confirm before listing",
+                Verdict.RISKY,
+                t(
+                    "headline.risky.low_confidence",
+                    lang,
+                    confidence=f"{top.confidence:.0%}",
+                    title=top.title,
+                ),
                 findings,
+                lang,
             ),
         )
 
@@ -214,18 +211,19 @@ def decide(findings: list[Finding]) -> tuple[Verdict, int, str]:
         return (
             Verdict.RISKY,
             _confidence(Verdict.RISKY, findings, top),
-            _explain("RISKY", f"a reviewable issue was found: {top.title}", findings),
+            _explain(
+                Verdict.RISKY,
+                t("headline.risky.reviewable", lang, title=top.title),
+                findings,
+                lang,
+            ),
         )
 
     top = lows[0]
     return (
         Verdict.SAFE,
         _confidence(Verdict.SAFE, findings, top),
-        _explain(
-            "SAFE",
-            "only low-severity observations were recorded, none of which prevent listing",
-            findings,
-        ),
+        _explain(Verdict.SAFE, t("headline.safe.low_only", lang), findings, lang),
     )
 
 
@@ -248,32 +246,55 @@ def _confidence(verdict: Verdict, findings: list[Finding], top: Finding) -> int:
     return max(35, min(99, score))
 
 
-def _explain(verdict: str, headline: str, findings: list[Finding]) -> str:
-    lines = [f"Verdict {verdict} because {headline}."]
-    lines.append(f"{len(findings)} issue(s) recorded:")
+def _explain(
+    verdict_value: Verdict, headline: str, findings: list[Finding], lang: Lang
+) -> str:
+    lines = [
+        t("explain.header", lang, verdict=verdict_label(verdict_value.value, lang), headline=headline)
+    ]
+    lines.append(t("explain.count", lang, count=len(findings)))
     for f in sorted(findings, key=lambda x: -rank(x.severity)):
         where = f.location_hint or (
-            f"box at ({f.bbox.x:.2f}, {f.bbox.y:.2f})" if f.bbox else "location not localised"
+            t("explain.box_at", lang, x=f"{f.bbox.x:.2f}", y=f"{f.bbox.y:.2f}")
+            if f.bbox
+            else t("explain.no_location", lang)
         )
-        holder = f" Rights holder: {f.rights_holder}." if f.rights_holder else ""
+        holder = (
+            t("explain.holder", lang, holder=f.rights_holder) if f.rights_holder else ""
+        )
         cites = "; ".join(
             e.reference_id or e.detail for e in f.evidence if e.source != "vision_model"
         )
-        cite = f" Evidence: {cites}." if cites else ""
+        cite = t("explain.cite", lang, cites=cites) if cites else ""
         lines.append(
-            f"  • [{f.severity.value.upper()}] {f.category.value}: {f.title} "
-            f"({where}, detection confidence {f.confidence:.0%}).{holder}{cite} "
-            f"Fix: {f.remediation}"
+            t(
+                "explain.item",
+                lang,
+                severity=severity_label(f.severity.value, lang),
+                category=category_label(f.category.value, lang),
+                title=f.title,
+                where=where,
+                confidence=f"{f.confidence:.0%}",
+                holder=holder,
+                cite=cite,
+                remediation=f.remediation,
+            )
         )
     return "\n".join(lines)
 
 
-def summarize(verdict: Verdict, findings: list[Finding]) -> str:
+def summarize(
+    verdict_value: Verdict, findings: list[Finding], lang: Lang = DEFAULT_LANG
+) -> str:
     if not findings:
-        return "No IP or policy risk detected — clear to upload."
-    cats = sorted({f.category.value.replace("_", " ") for f in findings})
+        return t("summary.clean", lang)
+    cats = sorted({category_label(f.category.value, lang) for f in findings})
     worst = max(findings, key=lambda f: rank(f.severity))
-    return (
-        f"{verdict.value}: {len(findings)} issue(s) across {', '.join(cats)}. "
-        f"Most serious — {worst.title}."
+    return t(
+        "summary.issues",
+        lang,
+        verdict=verdict_label(verdict_value.value, lang),
+        count=len(findings),
+        categories=", ".join(cats),
+        title=worst.title,
     )

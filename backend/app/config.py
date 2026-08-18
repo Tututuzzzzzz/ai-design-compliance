@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     # Comma-separated models tried in order when the primary is unavailable.
     vision_fallback_models: str = ""
     vision_max_attempts: int = 3
+    vision_circuit_breaker_threshold: int = 3
+    vision_circuit_breaker_cooldown_s: int = 180
 
     # --- Trademark sources --------------------------------------------
     # USPTO retired bulkdata.uspto.gov; the Open Data Portal API replaced it and
@@ -43,6 +45,11 @@ class Settings(BaseSettings):
     worker_concurrency: int = 4
     max_upload_mb: int = 60
     fetch_timeout_s: int = 60
+    fetch_max_attempts: int = 3
+    fetch_retry_jitter_s: float = 0.35
+    fetch_retry_base_delay_s: float = 0.75
+    ocr_timeout_s: float = 20.0
+    ocr_max_attempts: int = 2
     render_max_edge: int = 1600  # long-edge px sent to the vision model
 
     @property

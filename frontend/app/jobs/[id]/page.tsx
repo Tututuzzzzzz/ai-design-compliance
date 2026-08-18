@@ -3,6 +3,7 @@
 import { use, useCallback, useEffect, useState } from "react";
 import DesignDetail from "@/components/DesignDetail";
 import { api } from "@/lib/api";
+import { useTranslation } from "@/lib/i18n";
 import type { Design, Job } from "@/lib/types";
 
 const CATEGORIES = [
@@ -17,6 +18,7 @@ const CATEGORIES = [
 
 export default function JobPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const { t, lang } = useTranslation();
 
   const [job, setJob] = useState<Job | null>(null);
   const [designs, setDesigns] = useState<Design[]>([]);
@@ -64,6 +66,9 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
   const stats = job?.stats ?? { SAFE: 0, RISKY: 0, BLOCKED: 0, FAILED: 0 };
   const processed = job ? job.done + job.failed : 0;
   const pct = job && job.total ? Math.round((processed / job.total) * 100) : 0;
+  const sourceLabel = (value: string) => t(`source.${value}`) || value;
+  const statusLabel = (value: string) => t(`status.${value}`) || value;
+  const verdictLabel = (value: string) => t(`verdict.${value}`) || value;
 
   return (
     <main className="shell">
@@ -72,17 +77,18 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
       <div className="card">
         <div className="row">
           <div>
-            <h2 style={{ marginBottom: 2 }}>{job?.label ?? "Batch"}</h2>
+            <h2 style={{ marginBottom: 2 }}>{job?.label ?? t("job.batch")}</h2>
             <p className="muted" style={{ margin: 0 }}>
-              Input method: <strong>{job?.source}</strong> · job <code>{id}</code>
+              {t("job.inputMethod")}: <strong>{job?.source ? sourceLabel(job.source) : "-"}</strong> · {t("job.jobId")}{" "}
+              <code>{id}</code>
             </p>
           </div>
           <div className="spacer" />
-          <a className="ghost" href={api.exportUrl(id, "csv", { verdict, category })}>
-            Export CSV
+          <a className="ghost" href={api.exportUrl(id, "csv", { verdict, category, lang })}>
+            {t("job.exportCsv")}
           </a>
-          <a className="ghost" href={api.exportUrl(id, "xlsx", { verdict, category })}>
-            Export Excel
+          <a className="ghost" href={api.exportUrl(id, "xlsx", { verdict, category, lang })}>
+            {t("job.exportExcel")}
           </a>
         </div>
 
@@ -92,7 +98,7 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
               <span style={{ width: `${pct}%` }} />
             </div>
             <p className="muted" style={{ marginBottom: 0 }}>
-              {processed} of {job.total} analysed…
+              {processed} / {job.total} {t("job.analysed")}
             </p>
           </div>
         )}
@@ -102,25 +108,25 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
         <div className="stats">
           <div className="stat">
             <div className="n">{job?.total ?? 0}</div>
-            <div className="k">Total designs</div>
+            <div className="k">{t("job.totalDesigns")}</div>
           </div>
           <div className="stat">
             <div className="n" style={{ color: "var(--safe)" }}>
               {stats.SAFE}
             </div>
-            <div className="k">Safe</div>
+            <div className="k">{t("labels.safe")}</div>
           </div>
           <div className="stat">
             <div className="n" style={{ color: "var(--risky)" }}>
               {stats.RISKY}
             </div>
-            <div className="k">Risky</div>
+            <div className="k">{t("labels.risky")}</div>
           </div>
           <div className="stat">
             <div className="n" style={{ color: "var(--blocked)" }}>
               {stats.BLOCKED}
             </div>
-            <div className="k">Blocked</div>
+            <div className="k">{t("labels.blocked")}</div>
           </div>
         </div>
       </div>
@@ -128,36 +134,36 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
       <div className="card">
         <div className="row">
           <div style={{ minWidth: 160 }}>
-            <label>Verdict</label>
+            <label>{t("job.verdict")}</label>
             <select value={verdict} onChange={(e) => setVerdict(e.target.value)}>
-              <option value="">All</option>
-              <option value="SAFE">SAFE</option>
-              <option value="RISKY">RISKY</option>
-              <option value="BLOCKED">BLOCKED</option>
+              <option value="">{t("job.all")}</option>
+              <option value="SAFE">{verdictLabel("SAFE")}</option>
+              <option value="RISKY">{verdictLabel("RISKY")}</option>
+              <option value="BLOCKED">{verdictLabel("BLOCKED")}</option>
             </select>
           </div>
           <div style={{ minWidth: 220 }}>
-            <label>Violation type</label>
+            <label>{t("job.violationType")}</label>
             <select value={category} onChange={(e) => setCategory(e.target.value)}>
-              <option value="">All</option>
+              <option value="">{t("job.all")}</option>
               {CATEGORIES.map((c) => (
                 <option key={c} value={c}>
-                  {c.replace(/_/g, " ")}
+                  {t(`categories.${c}`)}
                 </option>
               ))}
             </select>
           </div>
           <div style={{ minWidth: 200 }}>
-            <label>Niche contains</label>
+            <label>{t("job.nicheContains")}</label>
             <input
               type="text"
               value={niche}
-              placeholder="e.g. Halloween"
+              placeholder={t("job.nichePlaceholder")}
               onChange={(e) => setNiche(e.target.value)}
             />
           </div>
           <div className="spacer" />
-          <span className="muted">{designs.length} shown</span>
+          <span className="muted">{designs.length} {t("job.shown")}</span>
         </div>
       </div>
 
@@ -169,7 +175,7 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={d.report.annotated_url ?? d.report.preview_url} alt={d.filename} />
               ) : (
-                <span className="muted">{d.status}</span>
+                <span className="muted">{statusLabel(d.status)}</span>
               )}
             </div>
             <div className="body">
@@ -177,12 +183,14 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
                 {d.filename}
               </div>
               <div className="row" style={{ gap: 6, marginTop: 6 }}>
-                <span className={`badge ${d.verdict ?? "PENDING"}`}>{d.verdict ?? d.status}</span>
+                <span className={`badge ${d.verdict ?? "PENDING"}`}>
+                  {d.verdict ? verdictLabel(d.verdict) : statusLabel(d.status)}
+                </span>
                 {d.confidence != null && <span className="muted">{d.confidence}%</span>}
               </div>
               <div className="meta">
                 {d.niche ?? "—"}
-                {d.report ? ` · ${d.report.findings.length} finding(s)` : ""}
+                {d.report ? ` · ${d.report.findings.length} ${t("job.findings")}` : ""}
               </div>
             </div>
           </div>
@@ -190,7 +198,7 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
       </div>
 
       {designs.length === 0 && job && processed > 0 && (
-        <p className="muted">No designs match these filters.</p>
+        <p className="muted">{t("job.noMatch")}</p>
       )}
 
       {selected && (

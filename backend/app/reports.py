@@ -10,29 +10,37 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
-COLUMNS = [
-    ("filename", "Filename"),
-    ("verdict", "Verdict"),
-    ("confidence", "Confidence %"),
-    ("niche", "Niche"),
-    ("sub_niche", "Sub-niche"),
-    ("style", "Style"),
-    ("motifs", "Motifs"),
-    ("risk_categories", "Risk categories"),
-    ("finding_count", "Findings"),
-    ("top_severity", "Top severity"),
-    ("rights_holders", "Rights holders"),
-    ("trademark_matches", "Trademark matches"),
-    ("regions", "Violation regions"),
-    ("remediation", "Suggested fixes"),
-    ("markets", "Markets"),
-    ("platforms", "Platforms"),
-    ("ocr_text", "OCR text"),
-    ("source", "Input method"),
-    ("source_ref", "Source ref"),
-    ("reasoning", "Reasoning"),
-    ("error", "Error"),
+from .pipeline import i18n
+from .pipeline.i18n import DEFAULT_LANG, Lang
+
+#: Column order. Headers are looked up per language at export time.
+COLUMN_KEYS = [
+    "filename",
+    "verdict",
+    "confidence",
+    "niche",
+    "sub_niche",
+    "style",
+    "motifs",
+    "risk_categories",
+    "finding_count",
+    "top_severity",
+    "rights_holders",
+    "trademark_matches",
+    "regions",
+    "remediation",
+    "markets",
+    "platforms",
+    "ocr_text",
+    "source",
+    "source_ref",
+    "reasoning",
+    "error",
 ]
+
+
+def columns(lang: Lang) -> list[tuple[str, str]]:
+    return [(key, i18n.export(key, lang)) for key in COLUMN_KEYS]
 
 _SEV_ORDER = {"low": 0, "medium": 1, "high": 2, "critical": 3}
 
@@ -43,7 +51,7 @@ FILLS = {
 }
 
 
-def flatten(design: dict[str, Any]) -> dict[str, Any]:
+def flatten(design: dict[str, Any], lang: Lang = DEFAULT_LANG) -> dict[str, Any]:
     report = design.get("report") or {}
     niche = report.get("niche") or {}
     findings = report.get("findings") or []
@@ -56,17 +64,22 @@ def flatten(design: dict[str, Any]) -> dict[str, Any]:
             "severity"
         ]
 
+    verdict_value = report.get("verdict") or design.get("verdict")
     return {
         "filename": design.get("filename", ""),
-        "verdict": report.get("verdict") or design.get("verdict") or "FAILED",
+        "verdict": (
+            i18n.verdict(verdict_value, lang) if verdict_value else i18n.export("failed", lang)
+        ),
         "confidence": report.get("confidence", 0),
         "niche": niche.get("primary", ""),
         "sub_niche": niche.get("sub_niche") or "",
         "style": ", ".join(niche.get("style") or []),
         "motifs": ", ".join(niche.get("motifs") or []),
-        "risk_categories": ", ".join(sorted({f.get("category", "") for f in findings})),
+        "risk_categories": ", ".join(
+            sorted({i18n.category(f.get("category", ""), lang) for f in findings})
+        ),
         "finding_count": len(findings),
-        "top_severity": top_sev,
+        "top_severity": i18n.severity_inline(top_sev, lang) if top_sev else "",
         "rights_holders": ", ".join(
             sorted({f["rights_holder"] for f in findings if f.get("rights_holder")})
         ),
@@ -98,56 +111,71 @@ def _region(f: dict[str, Any]) -> str:
     )
 
 
-def to_csv(designs: list[dict[str, Any]]) -> bytes:
+def to_csv(designs: list[dict[str, Any]], lang: Lang = DEFAULT_LANG) -> bytes:
+    cols = columns(lang)
     buf = io.StringIO()
-    writer = csv.DictWriter(buf, fieldnames=[k for k, _ in COLUMNS], extrasaction="ignore")
-    writer.writerow({k: label for k, label in COLUMNS})
+    writer = csv.DictWriter(buf, fieldnames=[k for k, _ in cols], extrasaction="ignore")
+    writer.writerow({k: label for k, label in cols})
     for d in designs:
-        writer.writerow(flatten(d))
+        writer.writerow(flatten(d, lang))
     return buf.getvalue().encode("utf-8-sig")  # BOM so Excel opens UTF-8 correctly
 
 
-def to_xlsx(designs: list[dict[str, Any]], stats: dict[str, int]) -> bytes:
+def to_xlsx(
+    designs: list[dict[str, Any]], stats: dict[str, int], lang: Lang = DEFAULT_LANG
+) -> bytes:
+    cols = columns(lang)
     wb = Workbook()
 
     ws = wb.active
-    ws.title = "Summary"
-    ws.append(["Metric", "Count"])
+    ws.title = i18n.export("sheet.summary", lang)
+    ws.append([i18n.export("metric", lang), i18n.export("count", lang)])
     ws["A1"].font = ws["B1"].font = Font(bold=True)
     total = sum(stats.values())
     for key in ("SAFE", "RISKY", "BLOCKED", "FAILED"):
-        ws.append([key, stats.get(key, 0)])
+        label = i18n.verdict(key, lang) if key in FILLS else i18n.export("failed", lang)
+        ws.append([label, stats.get(key, 0)])
         if key in FILLS:
             ws.cell(row=ws.max_row, column=1).fill = FILLS[key]
-    ws.append(["TOTAL", total])
+    ws.append([i18n.export("total", lang), total])
     ws.cell(row=ws.max_row, column=1).font = Font(bold=True)
     ws.column_dimensions["A"].width = 18
     ws.column_dimensions["B"].width = 10
 
-    det = wb.create_sheet("Designs")
-    det.append([label for _, label in COLUMNS])
+    det = wb.create_sheet(i18n.export("sheet.designs", lang))
+    det.append([label for _, label in cols])
     for cell in det[1]:
         cell.font = Font(bold=True)
         cell.alignment = Alignment(vertical="center")
     det.freeze_panes = "A2"
 
     for d in designs:
-        row = flatten(d)
-        det.append([row[k] for k, _ in COLUMNS])
-        fill = FILLS.get(str(row["verdict"]))
+        row = flatten(d, lang)
+        det.append([row[k] for k, _ in cols])
+        # Colour by the raw verdict, not the translated label.
+        raw_verdict = (d.get("report") or {}).get("verdict") or d.get("verdict")
+        fill = FILLS.get(str(raw_verdict))
         if fill:
             det.cell(row=det.max_row, column=2).fill = fill
 
-    det.auto_filter.ref = f"A1:{get_column_letter(len(COLUMNS))}{det.max_row}"
+    det.auto_filter.ref = f"A1:{get_column_letter(len(cols))}{det.max_row}"
     widths = {"filename": 34, "reasoning": 70, "remediation": 60, "ocr_text": 40}
-    for i, (key, _) in enumerate(COLUMNS, start=1):
+    for i, (key, _) in enumerate(cols, start=1):
         det.column_dimensions[get_column_letter(i)].width = widths.get(key, 18)
 
-    fnd = wb.create_sheet("Findings")
-    fnd.append(
-        ["Filename", "Category", "Severity", "Confidence", "Title", "Rights holder",
-         "Matched text", "Location", "Evidence", "Remediation"]
-    )
+    fnd = wb.create_sheet(i18n.export("sheet.findings", lang))
+    fnd.append([
+        i18n.export("filename", lang),
+        i18n.export("category", lang),
+        i18n.export("severity", lang),
+        i18n.export("confidence", lang),
+        i18n.export("title", lang),
+        i18n.export("rights_holder", lang),
+        i18n.export("matched_text", lang),
+        i18n.export("location", lang),
+        i18n.export("evidence", lang),
+        i18n.export("remediation", lang),
+    ])
     for cell in fnd[1]:
         cell.font = Font(bold=True)
     for d in designs:
@@ -155,8 +183,8 @@ def to_xlsx(designs: list[dict[str, Any]], stats: dict[str, int]) -> bytes:
         for f in report.get("findings") or []:
             fnd.append([
                 d.get("filename", ""),
-                f.get("category", ""),
-                f.get("severity", ""),
+                i18n.category(f.get("category", ""), lang),
+                i18n.severity_inline(f.get("severity", ""), lang),
                 f"{float(f.get('confidence') or 0):.0%}",
                 f.get("title", ""),
                 f.get("rights_holder") or "",

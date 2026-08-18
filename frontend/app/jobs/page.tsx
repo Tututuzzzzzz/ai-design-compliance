@@ -22,6 +22,9 @@ export default function JobsPage() {
     return () => clearInterval(t);
   }, []);
 
+  const sourceLabel = (value: string) => t(`source.${value}`) || value;
+  const statusLabel = (value: string) => t(`status.${value}`) || value;
+
   return (
     <main className="shell">
       {error && <div className="error">{error}</div>}
@@ -47,14 +50,14 @@ export default function JobsPage() {
                   <td>
                     <Link href={`/jobs/${j.id}`}>{j.label || j.id}</Link>
                   </td>
-                  <td>{j.source}</td>
+                  <td>{sourceLabel(j.source)}</td>
                   <td>
                     {j.done + j.failed}/{j.total}
                   </td>
                   <td style={{ color: "var(--safe)" }}>{j.stats.SAFE}</td>
                   <td style={{ color: "var(--risky)" }}>{j.stats.RISKY}</td>
                   <td style={{ color: "var(--blocked)" }}>{j.stats.BLOCKED}</td>
-                  <td className="muted">{j.status}</td>
+                  <td className="muted">{statusLabel(j.status)}</td>
                 </tr>
               ))}
             </tbody>

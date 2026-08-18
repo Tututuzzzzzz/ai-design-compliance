@@ -16,7 +16,7 @@ from ..models import (
     Verdict,
     VisionAnalysis,
 )
-from . import annotate, loader, ocr, rules, trademark, verdict, vision
+from . import annotate, i18n, loader, ocr, rules, trademark, verdict, vision
 
 log = logging.getLogger(__name__)
 
@@ -30,6 +30,7 @@ def analyze_design(
     meta: DesignMetadata,
 ) -> ComplianceReport:
     started = time.perf_counter()
+    lang = i18n.normalize(meta.language)
 
     # 1. Normalise any supported format into a flat PNG.
     render_path, width, height = loader.prepare(path)
@@ -55,30 +56,27 @@ def analyze_design(
         f.evidence = [
             Evidence(
                 source="vision_model",
-                detail=f"Identified by {provider} from the artwork itself.",
+                detail=i18n.t("evidence.vision", lang, provider=provider),
             )
         ]
 
     # 4. Cross-reference every text candidate against the real trademark register.
     candidates = _tm_candidates(ocr_lines, findings)
     hits = trademark.check(candidates, markets=meta.markets)
-    findings = verdict.merge_trademark_hits(findings, hits)
+    findings = verdict.merge_trademark_hits(findings, hits, lang)
 
     # 5. Apply platform / market policy.
-    findings, policy_notes = rules.apply(findings, meta.platforms, meta.markets)
+    findings, policy_notes = rules.apply(findings, meta.platforms, meta.markets, lang)
 
     # 5b. A phrase no register could confirm is a lead, not a violation — and the
     #     cap is applied AFTER policy so escalation can never push an unverified
     #     claim up to a blocking severity. Evidence quality bounds consequence.
-    findings = verdict.cap_unverified_phrases(findings)
+    findings = verdict.cap_unverified_phrases(findings, lang)
     if not trademark.index_available():
-        policy_notes.append(
-            "Local USPTO index not built — text was checked against the live USPTO "
-            "search only. Run `python -m data.build_uspto_index` for offline coverage."
-        )
+        policy_notes.append(i18n.t("note.no_local_index", lang))
 
     # 6. Decide.
-    final_verdict, confidence, reasoning = verdict.decide(findings)
+    final_verdict, confidence, reasoning = verdict.decide(findings, lang)
 
     annotated = annotate.render(render_path, findings)
 
@@ -91,7 +89,7 @@ def analyze_design(
         verdict=final_verdict,
         confidence=confidence,
         reasoning=reasoning,
-        summary=verdict.summarize(final_verdict, findings),
+        summary=verdict.summarize(final_verdict, findings, lang),
         niche=analysis.niche,
         findings=findings,
         ocr_text="\n".join(line.text for line in ocr_lines),
@@ -164,6 +162,7 @@ def failed_report(
 ) -> ComplianceReport:
     from ..models import Niche  # local import to avoid a cycle at module load
 
+    lang = i18n.normalize(meta.language)
     return ComplianceReport(
         design_id=design_id,
         filename=filename,
@@ -172,12 +171,8 @@ def failed_report(
         metadata=meta,
         verdict=Verdict.RISKY,
         confidence=0,
-        reasoning=(
-            f"This design could not be analysed automatically: {error}. "
-            "It is reported as RISKY rather than SAFE so it is never listed on the "
-            "strength of a failed check — review it manually."
-        ),
-        summary=f"Analysis failed: {error}",
-        niche=Niche(primary="unknown", confidence=0.0),
+        reasoning=i18n.t("failed.reasoning", lang, error=error),
+        summary=i18n.t("failed.summary", lang, error=error),
+        niche=Niche(primary=i18n.t("failed.niche", lang), confidence=0.0),
         error=error,
     )

@@ -25,6 +25,8 @@ services:
   web:
     build:
       context: ./frontend
+      args:
+        BACKEND_URL: http://api:8000
     environment:
       BACKEND_URL: http://api:8000
     ports:

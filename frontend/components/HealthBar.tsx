@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { useTranslation } from "@/lib/i18n";
 import type { Health } from "@/lib/types";
 
 export default function HealthBar() {
+  const { t } = useTranslation();
   const [health, setHealth] = useState<Health | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -12,28 +14,35 @@ export default function HealthBar() {
     api.health().then(setHealth).catch((e) => setError(String(e.message ?? e)));
   }, []);
 
-  if (error) return <div className="error">Backend unreachable: {error}</div>;
+  if (error) return <div className="error">{t("health.backendUnreachable")}: {error}</div>;
   if (!health) return null;
+
+  const ocrLabel =
+    health.ocr.engine === "rapidocr"
+      ? t("health.ocrRapid")
+      : health.ocr.engine === "vision-model-fallback"
+        ? t("health.ocrVisionFallback")
+        : health.ocr.engine;
 
   const items = [
     {
-      k: "Vision model",
+      k: t("health.visionModel"),
       v: `${health.vision.model}`,
       warn: !health.vision.configured,
-      hint: health.vision.configured ? null : "No API key set for this provider",
+      hint: health.vision.configured ? null : t("health.noApiKey"),
     },
-    { k: "OCR", v: health.ocr.engine, warn: false, hint: null },
+    { k: t("health.ocr"), v: ocrLabel, warn: false, hint: null },
     {
-      k: "Trademark index",
+      k: t("health.trademarkIndex"),
       v: health.trademark.available
-        ? `${health.trademark.marks.toLocaleString()} marks`
-        : "not built",
+        ? `${health.trademark.marks.toLocaleString()} ${t("health.marks")}`
+        : t("health.notBuilt"),
       warn: !health.trademark.available,
       hint: health.trademark.available
         ? null
-        : "Run `python -m data.build_uspto_index --daily 10` for offline matching",
+        : t("health.trademarkHint"),
     },
-    { k: "Workers", v: String(health.queue.workers), warn: false, hint: null },
+    { k: t("health.workers"), v: String(health.queue.workers), warn: false, hint: null },
   ];
 
   return (

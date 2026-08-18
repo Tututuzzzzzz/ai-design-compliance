@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from .. import db, queue, reports
 from ..config import settings
 from ..models import DesignMetadata
-from ..pipeline import fetcher, loader, ocr, trademark
+from ..pipeline import fetcher, i18n, loader, ocr, trademark, vision
 from ..pipeline.rules import MARKETS, PLATFORMS
 
 log = logging.getLogger(__name__)
@@ -217,6 +217,8 @@ async def analyze_csv(
             platforms=_split(_pick(row, _PLATFORM_KEYS)) or default_meta.platforms,
             title=_pick(row, _TITLE_KEYS) or default_meta.title,
             notes=_pick(row, _NOTE_KEYS) or default_meta.notes,
+            # Language is a property of the batch, never of a CSV row.
+            language=default_meta.language,
         )
 
         if url and url.lower().startswith(("http://", "https://")):
@@ -330,20 +332,30 @@ async def get_design(design_id: str):
 
 
 @router.get("/jobs/{job_id}/export.csv")
-async def export_csv(job_id: str, verdict: str | None = None, category: str | None = None):
+async def export_csv(
+    job_id: str,
+    verdict: str | None = None,
+    category: str | None = None,
+    lang: str | None = None,
+):
     designs = db.list_designs(job_id, verdict, None, category)
     return Response(
-        content=reports.to_csv(designs),
+        content=reports.to_csv(designs, i18n.normalize(lang)),
         media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="compliance-{job_id}.csv"'},
     )
 
 
 @router.get("/jobs/{job_id}/export.xlsx")
-async def export_xlsx(job_id: str, verdict: str | None = None, category: str | None = None):
+async def export_xlsx(
+    job_id: str,
+    verdict: str | None = None,
+    category: str | None = None,
+    lang: str | None = None,
+):
     designs = db.list_designs(job_id, verdict, None, category)
     return Response(
-        content=reports.to_xlsx(designs, db.job_stats(job_id)),
+        content=reports.to_xlsx(designs, db.job_stats(job_id), i18n.normalize(lang)),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="compliance-{job_id}.xlsx"'},
     )
@@ -382,6 +394,7 @@ async def health() -> dict[str, Any]:
                 "ollama": settings.ollama_model,
             }.get(provider),
             "configured": key_present,
+            "circuit_breakers": vision.breaker_snapshot(provider),
         },
         "ocr": {"engine": "rapidocr" if ocr.available() else "vision-model-fallback"},
         "trademark": {

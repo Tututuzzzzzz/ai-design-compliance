@@ -189,6 +189,11 @@ class DesignMetadata(BaseModel):
     platforms: list[str] = Field(default_factory=lambda: ["etsy"])
     title: str | None = None
     notes: str | None = None
+    #: Language the report prose is written in — both the vision model's free
+    #: text and the sentences the pipeline generates. Chosen at submission time
+    #: and stored with the job, so an old report keeps the language it was
+    #: analysed in instead of half-translating when the UI switches.
+    language: Literal["en", "vi"] = "en"
 
 
 class ComplianceReport(BaseModel):

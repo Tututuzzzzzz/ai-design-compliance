@@ -10,10 +10,10 @@ import { useTranslation } from "@/lib/i18n";
 type Tab = "upload" | "csv" | "link" | "folder";
 
 export default function Home() {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("upload");
-  const [meta, setMeta] = useState<Metadata>({ markets: ["US"], platforms: ["etsy"] });
+  const [metaState, setMeta] = useState<Metadata>({ markets: ["US"], platforms: ["etsy"] });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -34,6 +34,9 @@ export default function Home() {
     setBusy(true);
     setError(null);
     try {
+      // The report is written once, in the language selected now — switching the
+      // UI later re-labels the chrome but never rewrites an analysed report.
+      const meta = { ...metaState, language: lang };
       let res: { job_id: string };
       if (tab === "upload") {
         if (!files.length) throw new Error(t("messages.chooseDesignFile"));
@@ -103,10 +106,9 @@ export default function Home() {
                 onChange={(e) => setCsv(e.target.files?.[0] ?? null)}
               />
               <p className="muted" style={{ marginBottom: 0 }}>
-                Columns read (any order, case-insensitive): <code>filename</code>, <code>url</code>{" "}
-                / <code>link</code>, <code>title</code>, <code>markets</code>,{" "}
-                <code>platforms</code>, <code>notes</code>. Per-row markets and platforms override
-                the defaults below.
+                {t("messages.csvColumnsHelp")} <code>filename</code>, <code>url</code> /{" "}
+                <code>link</code>, <code>title</code>, <code>markets</code>, <code>platforms</code>,{" "}
+                <code>notes</code>. {t("messages.csvOverrideHelp")}
               </p>
             </div>
             <div className="field">
@@ -117,7 +119,7 @@ export default function Home() {
                 onChange={(e) => setCsvAttachments(Array.from(e.target.files ?? []))}
               />
               <p className="muted" style={{ marginBottom: 0 }}>
-                Attach these when the CSV lists local filenames instead of URLs.
+                {t("messages.csvAttachmentsHelp")}
               </p>
             </div>
           </>
@@ -146,15 +148,15 @@ export default function Home() {
               onChange={(e) => setFolder(e.target.value)}
             />
             <p className="muted" style={{ marginBottom: 0 }}>
-              Needs <code>GOOGLE_API_KEY</code> with the Drive API enabled — Drive has no
-              unauthenticated folder listing.
+              {t("messages.driveFolderHelpPrefix")} <code>GOOGLE_API_KEY</code>{" "}
+              {t("messages.driveFolderHelpSuffix")}
             </p>
           </div>
         )}
 
         <hr style={{ border: 0, borderTop: "1px solid var(--border)", margin: "18px 0" }} />
 
-        <MetadataPicker value={meta} onChange={setMeta} />
+        <MetadataPicker value={metaState} onChange={setMeta} />
 
         {error && <div className="error" style={{ marginBottom: 12 }}>{error}</div>}
 
