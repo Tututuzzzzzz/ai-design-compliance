@@ -11,6 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..models import Finding, RiskCategory, Severity
+from .i18n import DEFAULT_LANG, Lang, t
+from .i18n import category as category_label
+from .i18n import severity_inline
 
 _ORDER = [Severity.LOW, Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL]
 
@@ -34,6 +37,10 @@ class PlatformPolicy:
     # Keywords in a prohibited-content finding that this platform outright bans.
     banned_keywords: tuple[str, ...] = ()
     note: str = ""
+    note_vi: str = ""
+
+    def localized_note(self, lang: Lang) -> str:
+        return (self.note_vi or self.note) if lang == "vi" else self.note
 
 
 PLATFORMS: dict[str, PlatformPolicy] = {
@@ -48,6 +55,8 @@ PLATFORMS: dict[str, PlatformPolicy] = {
         ),
         banned_keywords=("firearm", "gun", "weapon", "drug", "hate", "explicit"),
         note="Etsy runs an active IP takedown programme; repeat notices close shops.",
+        note_vi="Etsy vận hành chương trình gỡ bỏ vi phạm sở hữu trí tuệ chủ động; "
+        "bị khiếu nại nhiều lần sẽ dẫn tới đóng cửa hàng.",
     ),
     "amazon_merch": PlatformPolicy(
         key="amazon_merch",
@@ -65,6 +74,8 @@ PLATFORMS: dict[str, PlatformPolicy] = {
             "tobacco", "hate", "explicit", "nudity", "violence",
         ),
         note="Merch on Demand suspends accounts on a single confirmed IP violation.",
+        note_vi="Merch on Demand khóa tài khoản chỉ sau một vi phạm sở hữu trí tuệ "
+        "được xác nhận.",
     ),
     "tiktok_shop": PlatformPolicy(
         key="tiktok_shop",
@@ -80,6 +91,8 @@ PLATFORMS: dict[str, PlatformPolicy] = {
             "alcohol", "explicit", "nudity", "hate", "self-harm",
         ),
         note="TikTok Shop enforces weapons and regulated-goods policies automatically.",
+        note_vi="TikTok Shop tự động thực thi chính sách về vũ khí và hàng hóa bị "
+        "quản lý.",
     ),
     "shopify": PlatformPolicy(
         key="shopify",
@@ -89,6 +102,8 @@ PLATFORMS: dict[str, PlatformPolicy] = {
         banned_keywords=("hate", "explicit", "self-harm"),
         note="Shopify is the seller's own storefront: liability sits with the merchant, "
         "not a marketplace reviewer.",
+        note_vi="Shopify là gian hàng của chính người bán: trách nhiệm pháp lý thuộc "
+        "về người bán, không phải đội kiểm duyệt của sàn.",
     ),
     "redbubble": PlatformPolicy(
         key="redbubble",
@@ -101,6 +116,8 @@ PLATFORMS: dict[str, PlatformPolicy] = {
         ),
         banned_keywords=("hate", "explicit"),
         note="Redbubble auto-removes listings on rights-holder keyword matches.",
+        note_vi="Redbubble tự động gỡ listing khi trùng từ khóa do chủ sở hữu quyền "
+        "đăng ký.",
     ),
 }
 
@@ -111,7 +128,11 @@ class MarketPolicy:
     name: str
     source: str
     note: str
+    note_vi: str = ""
     strict_categories: tuple[RiskCategory, ...] = ()
+
+    def localized_note(self, lang: Lang) -> str:
+        return (self.note_vi or self.note) if lang == "vi" else self.note
 
 
 MARKETS: dict[str, MarketPolicy] = {
@@ -120,6 +141,8 @@ MARKETS: dict[str, MarketPolicy] = {
         name="United States",
         source="https://www.uspto.gov/trademarks",
         note="US recognises fair use and parody defences, and publicity rights vary by state.",
+        note_vi="Hoa Kỳ công nhận lập luận fair use và nhại (parody), còn quyền hình "
+        "ảnh cá nhân khác nhau theo từng bang.",
     ),
     "EU": MarketPolicy(
         key="EU",
@@ -127,6 +150,8 @@ MARKETS: dict[str, MarketPolicy] = {
         source="https://euipo.europa.eu/",
         note="No general parody/fair-use defence for merchandise; EUIPO marks cover all "
         "member states at once.",
+        note_vi="Không có lập luận nhại/fair use chung cho hàng hóa; nhãn hiệu EUIPO "
+        "có hiệu lực đồng thời tại toàn bộ các nước thành viên.",
         strict_categories=(
             RiskCategory.COPYRIGHTED_CHARACTER,
             RiskCategory.BRAND_LOGO,
@@ -138,6 +163,8 @@ MARKETS: dict[str, MarketPolicy] = {
         name="United Kingdom",
         source="https://www.gov.uk/topic/intellectual-property/trade-marks",
         note="Post-Brexit UK marks are separate from EUIPO; parody is narrowly defined.",
+        note_vi="Sau Brexit, nhãn hiệu tại Anh tách khỏi EUIPO; phạm vi nhại được "
+        "định nghĩa rất hẹp.",
         strict_categories=(RiskCategory.BRAND_LOGO,),
     ),
     "JP": MarketPolicy(
@@ -145,6 +172,8 @@ MARKETS: dict[str, MarketPolicy] = {
         name="Japan",
         source="https://www.jpo.go.jp/e/",
         note="Anime and manga rights are aggressively enforced by Japanese rights holders.",
+        note_vi="Chủ sở hữu quyền tại Nhật thực thi rất quyết liệt đối với anime và "
+        "manga.",
         strict_categories=(
             RiskCategory.COPYRIGHTED_CHARACTER,
             RiskCategory.COPYRIGHTED_ARTWORK,
@@ -162,7 +191,10 @@ def resolve_markets(keys: list[str]) -> list[MarketPolicy]:
 
 
 def apply(
-    findings: list[Finding], platforms: list[str], markets: list[str]
+    findings: list[Finding],
+    platforms: list[str],
+    markets: list[str],
+    lang: Lang = DEFAULT_LANG,
 ) -> tuple[list[Finding], list[str]]:
     """Escalate severities per policy. Returns (adjusted findings, notes)."""
     plats = resolve_platforms(platforms)
@@ -183,11 +215,16 @@ def apply(
             old = f.severity
             f.severity = escalate(f.severity)
             if f.severity != old:
-                names = ", ".join(p.name for p in strict_plats)
                 notes.append(
-                    f"{names} treat {f.category.value.replace('_', ' ')} as a "
-                    f"zero-tolerance category — severity raised {old.value} → "
-                    f"{f.severity.value}. Policy: {strict_plats[0].source}"
+                    t(
+                        "rule.strict_platform",
+                        lang,
+                        names=", ".join(p.name for p in strict_plats),
+                        category=category_label(f.category.value, lang),
+                        old=severity_inline(old.value, lang),
+                        new=severity_inline(f.severity.value, lang),
+                        source=strict_plats[0].source,
+                    )
                 )
 
         if f.category is RiskCategory.PROHIBITED_CONTENT:
@@ -199,10 +236,16 @@ def apply(
             if banning:
                 old = f.severity
                 f.severity = escalate(f.severity)
-                summary = "; ".join(f"{n} ({', '.join(k)})" for n, k in banning.items())
                 notes.append(
-                    f"Prohibited-goods policy hit — {summary}. "
-                    f"Severity raised {old.value} → {f.severity.value}."
+                    t(
+                        "rule.banned_goods",
+                        lang,
+                        summary="; ".join(
+                            f"{n} ({', '.join(k)})" for n, k in banning.items()
+                        ),
+                        old=severity_inline(old.value, lang),
+                        new=severity_inline(f.severity.value, lang),
+                    )
                 )
 
         strict_mkts = [
@@ -215,13 +258,20 @@ def apply(
             f.severity = escalate(f.severity)
             if f.severity != old:
                 notes.append(
-                    f"{', '.join(m.name for m in strict_mkts)}: {strict_mkts[0].note} "
-                    f"Severity raised {old.value} → {f.severity.value}."
+                    t(
+                        "rule.strict_market",
+                        lang,
+                        names=", ".join(m.name for m in strict_mkts),
+                        note=strict_mkts[0].localized_note(lang),
+                        old=severity_inline(old.value, lang),
+                        new=severity_inline(f.severity.value, lang),
+                    )
                 )
 
     for p in plats:
-        if p.note:
-            notes.append(f"{p.name}: {p.note}")
+        note = p.localized_note(lang)
+        if note:
+            notes.append(f"{p.name}: {note}")
 
     # Preserve order, drop duplicates.
     return findings, list(dict.fromkeys(notes))

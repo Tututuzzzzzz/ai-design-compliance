@@ -6,6 +6,8 @@ Google Drive, Dropbox, S3 (public or presigned), and generic HTTP(S).
 
 from __future__ import annotations
 
+import random
+import time
 import re
 import uuid
 from pathlib import Path
@@ -34,6 +36,9 @@ _EXT_BY_MIME = {
 
 class FetchError(RuntimeError):
     pass
+
+
+_TRANSIENT_STATUS = {408, 425, 429, 500, 502, 503, 504}
 
 
 def is_drive_folder(url: str) -> bool:
@@ -81,35 +86,67 @@ def fetch(url: str) -> tuple[Path, str]:
     """Download `url` into uploads/. Returns (local_path, display_filename)."""
     target = normalize(url)
     limit = settings.max_upload_mb * 1024 * 1024
+    attempts = max(1, settings.fetch_max_attempts)
+    base = max(0.05, settings.fetch_retry_base_delay_s)
+    jitter = max(0.0, settings.fetch_retry_jitter_s)
+    last_exc: Exception | None = None
 
-    try:
-        with httpx.Client(follow_redirects=True, timeout=settings.fetch_timeout_s) as client:
-            with client.stream("GET", target) as resp:
-                resp.raise_for_status()
-                ctype = resp.headers.get("content-type", "")
-                if "text/html" in ctype:
-                    raise FetchError(
-                        f"URL returned an HTML page, not a file ({url}). "
-                        "Check that the link is publicly shared."
-                    )
+    for attempt in range(attempts):
+        dest: Path | None = None
+        try:
+            with httpx.Client(follow_redirects=True, timeout=settings.fetch_timeout_s) as client:
+                with client.stream("GET", target) as resp:
+                    if resp.status_code in _TRANSIENT_STATUS:
+                        raise FetchError(f"Temporary HTTP {resp.status_code} while fetching {url}")
+                    resp.raise_for_status()
+                    ctype = resp.headers.get("content-type", "")
+                    if "text/html" in ctype:
+                        raise FetchError(
+                            f"URL returned an HTML page, not a file ({url}). "
+                            "Check that the link is publicly shared."
+                        )
 
-                display = filename_for(url, ctype)
-                dest = settings.uploads_dir / f"{uuid.uuid4().hex}_{display}"
-                written = 0
-                with dest.open("wb") as fh:
-                    for chunk in resp.iter_bytes(64 * 1024):
-                        written += len(chunk)
-                        if written > limit:
-                            fh.close()
-                            dest.unlink(missing_ok=True)
-                            raise FetchError(
-                                f"File exceeds {settings.max_upload_mb} MB limit: {url}"
-                            )
-                        fh.write(chunk)
-    except httpx.HTTPError as exc:
-        raise FetchError(f"Could not download {url}: {exc}") from exc
+                    display = filename_for(url, ctype)
+                    dest = settings.uploads_dir / f"{uuid.uuid4().hex}_{display}"
+                    written = 0
+                    with dest.open("wb") as fh:
+                        for chunk in resp.iter_bytes(64 * 1024):
+                            written += len(chunk)
+                            if written > limit:
+                                fh.close()
+                                dest.unlink(missing_ok=True)
+                                raise FetchError(
+                                    f"File exceeds {settings.max_upload_mb} MB limit: {url}"
+                                )
+                            fh.write(chunk)
+            return dest, display
 
-    return dest, display
+        except httpx.HTTPStatusError as exc:
+            status = exc.response.status_code
+            last_exc = FetchError(f"Could not download {url}: HTTP {status}")
+            if status not in _TRANSIENT_STATUS or attempt + 1 >= attempts:
+                raise last_exc from exc
+
+        except (httpx.TimeoutException, httpx.NetworkError, httpx.TransportError) as exc:
+            last_exc = FetchError(f"Could not download {url}: {exc}")
+            if attempt + 1 >= attempts:
+                raise last_exc from exc
+
+        except FetchError as exc:
+            last_exc = exc
+            message = str(exc).lower()
+            is_transient = "temporary http" in message
+            if not is_transient or attempt + 1 >= attempts:
+                raise
+
+        finally:
+            if dest is not None and dest.exists() and last_exc is not None:
+                dest.unlink(missing_ok=True)
+
+        delay = (base * (2**attempt)) + random.uniform(0.0, jitter)
+        time.sleep(delay)
+
+    raise FetchError(f"Could not download {url}: {last_exc or 'unknown error'}")
 
 
 def list_drive_folder(url: str, api_key: str | None) -> list[tuple[str, str]]:

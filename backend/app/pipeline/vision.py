@@ -10,6 +10,8 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import math
+import threading
 import time
 from pathlib import Path
 
@@ -17,6 +19,7 @@ from pydantic import ValidationError
 
 from ..config import settings
 from ..models import DesignMetadata, VisionAnalysis
+from . import i18n
 
 log = logging.getLogger(__name__)
 
@@ -82,6 +85,13 @@ SEVERITY
 likeness, phrase that may be registered).
 - low: worth noting, unlikely to block a listing.
 """
+
+
+def _system_prompt(meta: DesignMetadata) -> str:
+    """The analysis rules plus, when the job is not in English, the instruction
+    to write every human-readable field in the job's language."""
+    extra = i18n.OUTPUT_LANGUAGE_INSTRUCTION.get(i18n.normalize(meta.language), "")
+    return SYSTEM_PROMPT + extra if extra else SYSTEM_PROMPT
 
 
 def _context_block(meta: DesignMetadata) -> str:
@@ -187,7 +197,7 @@ def _analyze_anthropic(image_path: Path, meta: DesignMetadata, model: str) -> Vi
     response = client.messages.parse(
         model=model,
         max_tokens=16000,
-        system=SYSTEM_PROMPT,
+        system=_system_prompt(meta),
         thinking={"type": "adaptive"},
         output_config={"effort": "high"},
         output_format=VisionAnalysis,
@@ -232,7 +242,7 @@ def _analyze_gemini(image_path: Path, meta: DesignMetadata, model: str) -> Visio
             f"{_context_block(meta)}\n\nAnalyse this design.",
         ],
         config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_PROMPT,
+            system_instruction=_system_prompt(meta),
             response_mime_type="application/json",
             # A sanitised dict, not the Pydantic class: Gemini rejects several
             # keywords Pydantic emits. We still validate the reply ourselves.
@@ -253,7 +263,7 @@ def _analyze_ollama(image_path: Path, meta: DesignMetadata, model: str) -> Visio
     data = base64.standard_b64encode(image_path.read_bytes()).decode()
     payload = {
         "model": model,
-        "system": SYSTEM_PROMPT,
+        "system": _system_prompt(meta),
         "prompt": f"{_context_block(meta)}\n\nAnalyse this design. Reply with JSON only.",
         "images": [data],
         "format": _schema(),
@@ -292,6 +302,11 @@ _PROVIDERS = {
     "ollama": _analyze_ollama,
 }
 
+# Circuit breaker state is per provider:model and shared across worker threads.
+_breaker_lock = threading.Lock()
+_breaker_until: dict[str, float] = {}
+_breaker_failures: dict[str, int] = {}
+
 
 #: Substrings that mark an error as worth retrying. Free-tier vision endpoints
 #: return these constantly under load; failing a design because the provider was
@@ -314,6 +329,80 @@ _TRANSIENT = (
 def _is_transient(exc: Exception) -> bool:
     text = f"{type(exc).__name__} {exc}".lower()
     return any(t in text for t in _TRANSIENT)
+
+
+def _cb_key(provider: str, model: str) -> str:
+    return f"{provider}:{model}"
+
+
+def _cb_open_for(key: str, seconds: int) -> None:
+    with _breaker_lock:
+        _breaker_until[key] = time.monotonic() + max(1, seconds)
+        _breaker_failures[key] = 0
+
+
+def _cb_mark_success(key: str) -> None:
+    with _breaker_lock:
+        _breaker_failures[key] = 0
+        _breaker_until.pop(key, None)
+
+
+def _cb_mark_failure(key: str, *, threshold: int, cooldown_s: int) -> None:
+    with _breaker_lock:
+        count = _breaker_failures.get(key, 0) + 1
+        _breaker_failures[key] = count
+        if count >= max(1, threshold):
+            _breaker_until[key] = time.monotonic() + max(1, cooldown_s)
+            _breaker_failures[key] = 0
+
+
+def _cb_remaining(key: str) -> float:
+    with _breaker_lock:
+        until = _breaker_until.get(key, 0.0)
+    return max(0.0, until - time.monotonic())
+
+
+def breaker_snapshot(provider: str | None = None) -> dict[str, dict[str, int | str]]:
+    """Expose circuit-breaker state for health/monitoring endpoints.
+
+    Returns a map keyed by "provider:model" with state, recent failure count,
+    and cooldown time when open.
+    """
+    provider_name = (provider or settings.vision_provider).lower()
+
+    primary = {
+        "anthropic": settings.anthropic_model,
+        "gemini": settings.gemini_model,
+        "ollama": settings.ollama_model,
+    }.get(provider_name)
+    fallbacks = [m.strip() for m in (settings.vision_fallback_models or "").split(",") if m.strip()]
+
+    configured = [m for m in ([primary] if primary else []) + fallbacks if m]
+    configured = list(dict.fromkeys(configured))
+
+    with _breaker_lock:
+        known_models = {
+            key.split(":", 1)[1]
+            for key in set(_breaker_until) | set(_breaker_failures)
+            if key.startswith(f"{provider_name}:") and ":" in key
+        }
+
+    models = list(dict.fromkeys(configured + sorted(known_models)))
+    snapshot: dict[str, dict[str, int | str]] = {}
+    for model in models:
+        key = _cb_key(provider_name, model)
+        remaining = _cb_remaining(key)
+        with _breaker_lock:
+            failures = int(_breaker_failures.get(key, 0))
+        entry: dict[str, int | str] = {
+            "state": "open" if remaining > 0 else "closed",
+            "failures": failures,
+        }
+        if remaining > 0:
+            entry["cooldown_remaining_s"] = int(math.ceil(remaining))
+        snapshot[key] = entry
+
+    return snapshot
 
 
 def analyze(image_path: Path, meta: DesignMetadata) -> tuple[VisionAnalysis, str]:
@@ -340,15 +429,26 @@ def analyze(image_path: Path, meta: DesignMetadata) -> tuple[VisionAnalysis, str
 
     fallbacks = [m.strip() for m in (settings.vision_fallback_models or "").split(",") if m.strip()]
     chain = [primary] + [m for m in fallbacks if m != primary]
+    threshold = max(1, settings.vision_circuit_breaker_threshold)
+    cooldown_s = max(1, settings.vision_circuit_breaker_cooldown_s)
 
     last: Exception | None = None
     for model in chain:
+        key = _cb_key(provider, model)
+        remaining = _cb_remaining(key)
+        if remaining > 0:
+            log.warning("%s skipped: circuit open for %.0fs", model, remaining)
+            continue
+
         for attempt in range(settings.vision_max_attempts):
             try:
-                return fn(image_path, meta, model), f"{provider}:{model}"
+                analysis = fn(image_path, meta, model)
+                _cb_mark_success(key)
+                return analysis, f"{provider}:{model}"
             except Exception as exc:
                 last = exc
                 if not _is_transient(exc):
+                    _cb_open_for(key, cooldown_s)
                     if model == chain[-1]:
                         raise
                     log.warning("%s unusable (%s); trying next model", model, str(exc)[:120])
@@ -367,6 +467,14 @@ def analyze(image_path: Path, meta: DesignMetadata) -> tuple[VisionAnalysis, str
         else:
             # Loop ran to completion, so every attempt hit a transient failure.
             log.warning("%s still failing after %d attempts", model, settings.vision_max_attempts)
+            _cb_mark_failure(key, threshold=threshold, cooldown_s=cooldown_s)
+
+    if all(_cb_remaining(_cb_key(provider, m)) > 0 for m in chain):
+        opens = [f"{m} ({_cb_remaining(_cb_key(provider, m)):.0f}s)" for m in chain]
+        raise RuntimeError(
+            "All configured vision models are temporarily blocked by the circuit "
+            f"breaker: {', '.join(opens)}"
+        )
 
     raise RuntimeError(
         f"All vision models failed ({', '.join(chain)}). Last error: {last}"

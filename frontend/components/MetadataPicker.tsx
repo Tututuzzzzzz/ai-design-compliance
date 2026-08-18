@@ -1,6 +1,7 @@
 "use client";
 
 import type { Metadata } from "@/lib/api";
+import { useTranslation } from "@/lib/i18n";
 
 const MARKETS = [
   { key: "US", label: "United States" },
@@ -28,10 +29,12 @@ export default function MetadataPicker({
   value: Metadata;
   onChange: (m: Metadata) => void;
 }) {
+  const { t } = useTranslation();
+
   return (
     <div className="grid two">
       <div className="field">
-        <label>Target markets</label>
+        <label>{t("meta.targetMarkets")}</label>
         <div className="chips">
           {MARKETS.map((m) => (
             <button
@@ -46,12 +49,12 @@ export default function MetadataPicker({
           ))}
         </div>
         <p className="muted" style={{ marginTop: 6 }}>
-          Each market has its own register and its own parody rules.
+          {t("meta.marketsHelp")}
         </p>
       </div>
 
       <div className="field">
-        <label>Selling platforms</label>
+        <label>{t("meta.sellingPlatforms")}</label>
         <div className="chips">
           {PLATFORMS.map((p) => (
             <button
@@ -66,8 +69,7 @@ export default function MetadataPicker({
           ))}
         </div>
         <p className="muted" style={{ marginTop: 6 }}>
-          Stricter platforms escalate severity — the same art can be SAFE on Shopify and BLOCKED
-          on Amazon Merch.
+          {t("meta.platformsHelp")}
         </p>
       </div>
     </div>

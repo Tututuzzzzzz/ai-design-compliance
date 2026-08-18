@@ -1,4 +1,5 @@
 import type { Design, Health, Job } from "./types";
+import type { Language } from "./i18n";
 
 async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -19,6 +20,9 @@ export interface Metadata {
   platforms: string[];
   title?: string;
   notes?: string;
+  /** Language the backend writes the report in — the vision model's prose and
+   *  the pipeline's own sentences. Set from the UI language at submit time. */
+  language?: Language;
 }
 
 export const api = {
@@ -71,7 +75,11 @@ export const api = {
     return fetch(`/api/designs?${qs}`).then(json<{ designs: Design[] }>);
   },
 
-  exportUrl(jobId: string, format: "csv" | "xlsx", filters: { verdict?: string; category?: string }) {
+  exportUrl(
+    jobId: string,
+    format: "csv" | "xlsx",
+    filters: { verdict?: string; category?: string; lang?: Language },
+  ) {
     const qs = new URLSearchParams(
       Object.entries(filters).filter(([, v]) => v) as [string, string][],
     );

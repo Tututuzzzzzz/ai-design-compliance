@@ -42,6 +42,11 @@
     "chooseCsvFile": "Choose a CSV file",
     "pasteUrl": "Paste at least one URL",
     "pasteGoogleDrive": "Paste a Google Drive folder link",
+    "csvColumnsHelp": "Columns read (any order, case-insensitive):",
+    "csvOverrideHelp": "Per-row markets and platforms override the defaults below.",
+    "csvAttachmentsHelp": "Attach these when the CSV lists local filenames instead of URLs.",
+    "driveFolderHelpPrefix": "Needs",
+    "driveFolderHelpSuffix": "with the Drive API enabled — Drive has no unauthenticated folder listing.",
     "marked": "region(s) marked",
     "confidence": "Confidence",
     "provider": "Provider",
@@ -57,5 +62,106 @@
   "nav": {
     "new": "New analysis",
     "batches": "Batches"
+  },
+  "meta": {
+    "targetMarkets": "Target markets",
+    "sellingPlatforms": "Selling platforms",
+    "marketsHelp": "Each market has its own register and its own parody rules.",
+    "platformsHelp": "Stricter platforms escalate severity — the same art can be SAFE on Shopify and BLOCKED on Amazon Merch."
+  },
+  "health": {
+    "backendUnreachable": "Backend unreachable",
+    "visionModel": "Vision model",
+    "ocr": "OCR",
+    "ocrRapid": "RapidOCR (local)",
+    "ocrVisionFallback": "Vision-model OCR (fallback)",
+    "trademarkIndex": "Trademark index",
+    "workers": "Workers",
+    "marks": "marks",
+    "notBuilt": "not built",
+    "noApiKey": "No API key set for this provider",
+    "trademarkHint": "Run `python -m data.build_uspto_index --daily 10` for offline matching"
+  },
+  "job": {
+    "batch": "Batch",
+    "inputMethod": "Input method",
+    "jobId": "job",
+    "exportCsv": "Export CSV",
+    "exportExcel": "Export Excel",
+    "analysed": "analysed…",
+    "totalDesigns": "Total designs",
+    "verdict": "Verdict",
+    "all": "All",
+    "violationType": "Violation type",
+    "nicheContains": "Niche contains",
+    "nichePlaceholder": "e.g. Halloween",
+    "shown": "shown",
+    "findings": "finding(s)",
+    "noMatch": "No designs match these filters."
+  },
+  "categories": {
+    "copyrighted_character": "copyrighted character",
+    "brand_logo": "brand logo",
+    "trademarked_phrase": "trademarked phrase",
+    "public_figure": "public figure",
+    "copyrighted_artwork": "copyrighted artwork",
+    "licensed_font": "licensed font",
+    "prohibited_content": "prohibited content"
+  },
+  "detail": {
+    "noPreview": "No preview available.",
+    "niche": "Niche",
+    "primary": "Primary",
+    "subNiche": "Sub-niche",
+    "audience": "Audience",
+    "style": "Style",
+    "motifs": "Motifs",
+    "textInDesign": "Text in design",
+    "findings": "Findings",
+    "noIssues": "No IP or policy issues detected in this design.",
+    "rightsHolder": "Rights holder",
+    "location": "Location",
+    "howToFix": "How to fix",
+    "registerMatches": "Register matches",
+    "text": "Text",
+    "registeredMark": "Registered mark",
+    "similarity": "Sim.",
+    "owner": "Owner",
+    "verify": "verify",
+    "box": "box",
+    "reasoning": "Reasoning",
+    "policyNotes": "Policy notes"
+  },
+  "severity": {
+    "critical": "critical",
+    "high": "high",
+    "medium": "medium",
+    "low": "low"
+  },
+  "evidence": {
+    "vision_model": "Vision model",
+    "ocr": "OCR",
+    "uspto_local_index": "USPTO local index",
+    "uspto_live_api": "USPTO live API",
+    "euipo_api": "EUIPO API",
+    "policy_rule": "Policy rule"
+  },
+  "status": {
+    "queued": "queued",
+    "running": "running",
+    "done": "done",
+    "failed": "failed",
+    "PENDING": "pending"
+  },
+  "source": {
+    "upload": "upload",
+    "csv": "CSV import",
+    "link": "link import",
+    "folder": "Google Drive folder"
+  },
+  "verdict": {
+    "SAFE": "SAFE",
+    "RISKY": "RISKY",
+    "BLOCKED": "BLOCKED"
   }
 }

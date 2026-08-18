@@ -42,6 +42,11 @@
     "chooseCsvFile": "Chọn tệp CSV",
     "pasteUrl": "Dán ít nhất một URL",
     "pasteGoogleDrive": "Dán liên kết thư mục Google Drive",
+    "csvColumnsHelp": "Các cột được đọc (không phân biệt thứ tự, chữ hoa/thường):",
+    "csvOverrideHelp": "Giá trị markets và platforms theo từng dòng sẽ ghi đè giá trị mặc định bên dưới.",
+    "csvAttachmentsHelp": "Đính kèm các tệp này khi CSV chứa tên tệp cục bộ thay vì URL.",
+    "driveFolderHelpPrefix": "Cần",
+    "driveFolderHelpSuffix": "và bật Drive API — Google Drive không hỗ trợ liệt kê thư mục ẩn danh.",
     "marked": "vùng được đánh dấu",
     "confidence": "Độ tin cậy",
     "provider": "Nhà cung cấp",
@@ -57,5 +62,106 @@
   "nav": {
     "new": "Phân tích mới",
     "batches": "Lô xử lý"
+  },
+  "meta": {
+    "targetMarkets": "Thị trường mục tiêu",
+    "sellingPlatforms": "Nền tảng bán hàng",
+    "marketsHelp": "Mỗi thị trường có hệ thống đăng ký và quy tắc parody riêng.",
+    "platformsHelp": "Nền tảng càng nghiêm ngặt sẽ nâng mức độ rủi ro — cùng một thiết kế có thể SAFE trên Shopify nhưng BLOCKED trên Amazon Merch."
+  },
+  "health": {
+    "backendUnreachable": "Không thể kết nối backend",
+    "visionModel": "Mô hình Vision",
+    "ocr": "OCR",
+    "ocrRapid": "RapidOCR (cục bộ)",
+    "ocrVisionFallback": "OCR từ mô hình Vision (dự phòng)",
+    "trademarkIndex": "Chỉ mục trademark",
+    "workers": "Worker",
+    "marks": "nhãn hiệu",
+    "notBuilt": "chưa xây dựng",
+    "noApiKey": "Chưa thiết lập API key cho nhà cung cấp này",
+    "trademarkHint": "Chạy `python -m data.build_uspto_index --daily 10` để bật đối sánh ngoại tuyến"
+  },
+  "job": {
+    "batch": "Lô",
+    "inputMethod": "Phương thức đầu vào",
+    "jobId": "job",
+    "exportCsv": "Xuất CSV",
+    "exportExcel": "Xuất Excel",
+    "analysed": "đã phân tích…",
+    "totalDesigns": "Tổng số thiết kế",
+    "verdict": "Kết luận",
+    "all": "Tất cả",
+    "violationType": "Loại vi phạm",
+    "nicheContains": "Niche chứa",
+    "nichePlaceholder": "ví dụ: Halloween",
+    "shown": "mục hiển thị",
+    "findings": "phát hiện",
+    "noMatch": "Không có thiết kế nào khớp với bộ lọc hiện tại."
+  },
+  "categories": {
+    "copyrighted_character": "Nhân vật có bản quyền",
+    "brand_logo": "Logo thương hiệu",
+    "trademarked_phrase": "Cụm từ đã đăng ký nhãn hiệu",
+    "public_figure": "Nhân vật công chúng",
+    "copyrighted_artwork": "Tác phẩm có bản quyền",
+    "licensed_font": "Phông chữ cần giấy phép",
+    "prohibited_content": "Nội dung bị cấm"
+  },
+  "detail": {
+    "noPreview": "Không có ảnh xem trước.",
+    "niche": "Niche",
+    "primary": "Chính",
+    "subNiche": "Niche phụ",
+    "audience": "Đối tượng",
+    "style": "Phong cách",
+    "motifs": "Motif",
+    "textInDesign": "Văn bản trong thiết kế",
+    "findings": "Phát hiện",
+    "noIssues": "Không phát hiện rủi ro IP hoặc chính sách trong thiết kế này.",
+    "rightsHolder": "Chủ sở hữu quyền",
+    "location": "Vị trí",
+    "howToFix": "Cách khắc phục",
+    "registerMatches": "Kết quả khớp trên register",
+    "text": "Văn bản",
+    "registeredMark": "Nhãn hiệu đã đăng ký",
+    "similarity": "Độ tương đồng",
+    "owner": "Chủ sở hữu",
+    "verify": "xác minh",
+    "box": "khung",
+    "reasoning": "Giải thích",
+    "policyNotes": "Ghi chú chính sách"
+  },
+  "severity": {
+    "critical": "nghiêm trọng",
+    "high": "cao",
+    "medium": "trung bình",
+    "low": "thấp"
+  },
+  "evidence": {
+    "vision_model": "Mô hình thị giác",
+    "ocr": "OCR",
+    "uspto_local_index": "Chỉ mục USPTO cục bộ",
+    "uspto_live_api": "API USPTO trực tuyến",
+    "euipo_api": "API EUIPO",
+    "policy_rule": "Luật chính sách"
+  },
+  "status": {
+    "queued": "đang xếp hàng",
+    "running": "đang xử lý",
+    "done": "hoàn tất",
+    "failed": "thất bại",
+    "PENDING": "chờ xử lý"
+  },
+  "source": {
+    "upload": "tải tệp lên",
+    "csv": "nhập CSV",
+    "link": "nhập liên kết",
+    "folder": "thư mục Google Drive"
+  },
+  "verdict": {
+    "SAFE": "AN TOÀN",
+    "RISKY": "RỦI RO",
+    "BLOCKED": "BỊ CHẶN"
   }
 }
