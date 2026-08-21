@@ -68,7 +68,16 @@ export const api = {
   jobs: () => fetch("/api/jobs").then(json<{ jobs: Job[] }>),
   job: (id: string) => fetch(`/api/jobs/${id}`).then(json<Job & { pending: number }>),
 
-  designs(params: { job_id?: string; verdict?: string; niche?: string; category?: string }) {
+  designs(params: {
+    job_id?: string;
+    verdict?: string;
+    niche?: string;
+    category?: string;
+    /** Epoch seconds bounding the scan time. */
+    since?: string;
+    until?: string;
+    limit?: string;
+  }) {
     const qs = new URLSearchParams(
       Object.entries(params).filter(([, v]) => v) as [string, string][],
     );
@@ -77,12 +86,38 @@ export const api = {
 
   exportUrl(
     jobId: string,
-    format: "csv" | "xlsx",
-    filters: { verdict?: string; category?: string; lang?: Language },
+    format: "csv" | "xlsx" | "sheet.xlsx",
+    // The window is passed through so the file matches the grid the button was
+    // pressed from — an export that silently ignores the filters is worse than
+    // no export.
+    filters: {
+      verdict?: string;
+      category?: string;
+      lang?: Language;
+      since?: string;
+      until?: string;
+    },
   ) {
     const qs = new URLSearchParams(
       Object.entries(filters).filter(([, v]) => v) as [string, string][],
     );
     return `/api/jobs/${jobId}/export.${format}?${qs}`;
+  },
+
+  /** Cross-batch export — same filters, no job scope. */
+  exportAllUrl(
+    format: "csv" | "xlsx" | "sheet.xlsx",
+    filters: {
+      verdict?: string;
+      category?: string;
+      lang?: Language;
+      since?: string;
+      until?: string;
+    },
+  ) {
+    const qs = new URLSearchParams(
+      Object.entries(filters).filter(([, v]) => v) as [string, string][],
+    );
+    return `/api/export.${format}?${qs}`;
   },
 };

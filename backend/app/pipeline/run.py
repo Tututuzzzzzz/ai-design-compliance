@@ -21,6 +21,21 @@ from . import annotate, i18n, loader, ocr, rules, trademark, verdict, vision
 log = logging.getLogger(__name__)
 
 
+class AnalysisFailed(RuntimeError):
+    """A pipeline failure that happened *after* the preview existed.
+
+    Carries the preview so the UI can still show the design next to the error —
+    a failed row with no image looks like the upload itself was lost. It also
+    stops the preview becoming an orphan file: whoever handles this either
+    references the path or is responsible for deleting it.
+    """
+
+    def __init__(self, cause: Exception, preview_path: Path | None = None) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+        self.preview_path = preview_path
+
+
 def analyze_design(
     design_id: str,
     path: Path,
@@ -30,10 +45,38 @@ def analyze_design(
     meta: DesignMetadata,
 ) -> ComplianceReport:
     started = time.perf_counter()
-    lang = i18n.normalize(meta.language)
 
-    # 1. Normalise any supported format into a flat PNG.
-    render_path, width, height = loader.prepare(path)
+    # 1. Normalise any supported format into a flat PNG, plus the small
+    #    derivative the UI keeps.
+    render_path, preview_path, width, height = loader.prepare(path)
+
+    try:
+        return _analyze_rendered(
+            design_id, render_path, preview_path, width, height,
+            filename, source, source_ref, meta, started,
+        )
+    except Exception as exc:
+        raise AnalysisFailed(exc, preview_path) from exc
+    finally:
+        # The vision render has no consumer once analysis returns — the report
+        # points at the preview. Deleting it here covers the success path and
+        # every failure path in one place.
+        render_path.unlink(missing_ok=True)
+
+
+def _analyze_rendered(
+    design_id: str,
+    render_path: Path,
+    preview_path: Path,
+    width: int,
+    height: int,
+    filename: str,
+    source: str,
+    source_ref: str | None,
+    meta: DesignMetadata,
+    started: float,
+) -> ComplianceReport:
+    lang = i18n.normalize(meta.language)
 
     # 2. Local OCR first — its boxes are pixel-accurate where the model's are
     #    estimates. If the engine is not installed we use the model's OCR instead.
@@ -78,7 +121,10 @@ def analyze_design(
     # 6. Decide.
     final_verdict, confidence, reasoning = verdict.decide(findings, lang)
 
-    annotated = annotate.render(render_path, findings)
+    # 7. Draw the boxes on the *preview*, not the vision render. Bboxes are
+    #    normalised 0..1, so the overlay is resolution-independent — and the
+    #    render is about to be deleted.
+    annotated = annotate.render(preview_path, findings)
 
     return ComplianceReport(
         design_id=design_id,
@@ -97,8 +143,9 @@ def analyze_design(
         policy_notes=policy_notes,
         image_width=width,
         image_height=height,
-        preview_url=f"/api/files/{render_path.name}",
+        preview_url=f"/api/files/{preview_path.name}",
         annotated_url=f"/api/files/{annotated.name}" if annotated else None,
+        original_url=f"/api/designs/{design_id}/original",
         duration_ms=int((time.perf_counter() - started) * 1000),
         provider=f"{provider} + {'rapidocr' if used_local_ocr else 'vision-ocr'}",
     )
@@ -159,11 +206,14 @@ def failed_report(
     source_ref: str | None,
     meta: DesignMetadata,
     error: str,
+    preview_path: Path | None = None,
 ) -> ComplianceReport:
     from ..models import Niche  # local import to avoid a cycle at module load
 
     lang = i18n.normalize(meta.language)
     return ComplianceReport(
+        preview_url=f"/api/files/{preview_path.name}" if preview_path else None,
+        original_url=f"/api/designs/{design_id}/original",
         design_id=design_id,
         filename=filename,
         source=source,

@@ -70,6 +70,9 @@ export interface ComplianceReport {
   image_height: number;
   preview_url?: string | null;
   annotated_url?: string | null;
+  /** Full-resolution file the user supplied. Linked, never embedded — originals
+   *  run to tens of MB and the grid would choke on them. */
+  original_url?: string | null;
   duration_ms: number;
   provider: string;
   error?: string | null;
@@ -78,6 +81,8 @@ export interface ComplianceReport {
 export interface Design {
   id: string;
   job_id: string;
+  /** Epoch seconds the row was created — the scan time the date filter works on. */
+  created_at: number;
   status: string;
   filename: string;
   source: string;

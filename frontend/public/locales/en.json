@@ -1,15 +1,35 @@
 {
   "tabs": {
-    "upload": "Upload files",
+    "upload": "Upload",
     "csv": "Import CSV",
-    "link": "Import links",
-    "folder": "Connect folder"
+    "link": "Import link",
+    "folder": "Drive folder"
   },
   "hints": {
     "upload": "PNG, JPG, WEBP, PSD, AI, PDF — one or many",
     "csv": "A manifest of filenames or URLs for batch processing",
     "link": "Drive / Dropbox / S3 / direct image URLs",
     "folder": "Scan an entire Google Drive folder"
+  },
+  "hero": {
+    "title": "Ship your designs with confidence.",
+    "lede": "Drop your first designs and get a verdict before the marketplace gives you one.",
+    "step1": "Detect the niche",
+    "step1detail": "main niche, audience, style, motifs",
+    "step2": "Check real registers",
+    "step2detail": "text + images, against USPTO records",
+    "step3": "Verdict + fixes",
+    "step3detail": "SAFE / RISKY / BLOCKED with reasons"
+  },
+  "newCheck": {
+    "title": "New check",
+    "formats": "PNG · JPG · PSD · AI · PDF — single or batch",
+    "dropHere": "or drag & drop design files here",
+    "eachVerdict": "one or many — each design gets its own verdict",
+    "dropCsv": "or drop a CSV list here",
+    "csvColumns": "columns: filename or url · title · markets · platforms · notes",
+    "linkPlaceholder": "Paste Drive, Dropbox or image links — one per line",
+    "linkHint": "Share links are converted to direct downloads automatically."
   },
   "labels": {
     "designFiles": "Design files",
@@ -20,6 +40,7 @@
     "filesSelected": "file(s) selected",
     "designDetail": "Design Detail",
     "batches": "Batches",
+    "batchesSub": "Every check you have run, newest first.",
     "noBatches": "No batches yet.",
     "batch": "Batch",
     "input": "Input",
@@ -32,9 +53,89 @@
   "buttons": {
     "submit": "Analyse",
     "close": "Close",
+    "browseFiles": "Browse files",
+    "browseCsv": "Browse CSV",
+    "attachFiles": "Attach local files",
+    "attachedN": "{n} file(s) attached",
+    "analyseOne": "Analyse design",
+    "analyseMany": "Analyse {n} designs",
+    "analyseBatch": "Analyse batch",
+    "fetch": "Fetch",
+    "connect": "Connect",
     "showAnnotated": "Show violation boxes",
-    "showOriginal": "Show original",
-    "refresh": "Refresh"
+    "showOriginal": "Hide boxes",
+    "refresh": "Refresh",
+    "removeAll": "Remove all",
+    "removeFile": "Remove file"
+  },
+  "view": {
+    "dashboard": "Dashboard",
+    "export": "Export",
+    "history": "History log"
+  },
+  "proc": {
+    "title": "Checking your designs…",
+    "steps": "Each design: read the text → recognise images → check the trademark register → apply platform rules.",
+    "designs": "designs",
+    "about": "about",
+    "each": "each",
+    "of": "of",
+    "complete": "complete",
+    "viewResults": "View results",
+    "note": {
+      "queued": "waiting",
+      "running": "recognising images and text",
+      "done": "done",
+      "failed": "could not be analysed"
+    }
+  },
+  "stat": {
+    "SAFE": "clear to upload",
+    "RISKY": "needs review",
+    "BLOCKED": "do not upload",
+    "FAILED": "could not be analysed",
+    "caveat": "SAFE = no violation found — it is not a legal review. Every match links to the official register so you can verify it yourself."
+  },
+  "report": {
+    "title": "Batch report",
+    "design": "Design",
+    "searchPlaceholder": "Search name or niche…",
+    "allCategories": "All violation types",
+    "exportReport": "Export report",
+    "noMatch": "No designs match the current search or filter.",
+    "clearFilters": "Clear filters",
+    "confidenceHint": "How sure the AI is about the verdict — not the level of risk",
+    "confidenceNote": "Confidence = how sure the AI is about its verdict, not the level of risk. Click a row for the full explanation.",
+    "latestScan": "Latest scan",
+    "showing": "showing {n} of {m} designs",
+    "capped": "newest {n} shown — narrow the date range for older scans"
+  },
+  "export": {
+    "title": "Export report",
+    "filtersApply": "the current search and filters are applied",
+    "applied": "Applied:",
+    "search": "Search",
+    "clearAll": "Clear — include all designs",
+    "sheet": {
+      "summary": "Summary",
+      "designs": "Designs",
+      "findings": "Findings"
+    },
+    "metric": "Metric",
+    "value": "Value",
+    "inReport": "Designs in this report",
+    "scanDate": "Scanned",
+    "filename": "Filename",
+    "category": "Category",
+    "severity": "Severity",
+    "finding": "Finding",
+    "localFlagNote": "\"Risk accepted\" and \"false alarm\" are your own notes, stored in this browser only — they are not part of the downloaded report.",
+    "window": "Scan window"
+  },
+  "flag": {
+    "accepted": "risk accepted",
+    "reported": "reported as false alarm",
+    "cleared": "note cleared"
   },
   "messages": {
     "analysisInProgress": "Analysis in progress…",
@@ -56,18 +157,28 @@
     "error": "Error"
   },
   "header": {
-    "title": "AI Design Compliance Agent",
-    "tagline": "Niche detection · trademark & copyright screening · SAFE / RISKY / BLOCKED"
+    "title": "VinaSources — design compliance dashboard",
+    "tagline": "Design compliance check · a member of LeadsGen Group",
+    "provenance": "USPTO trademark register",
+    "provenanceFull": "Verdicts are checked against the USPTO trademark register"
+  },
+  "footer": {
+    "powered": "Powered by AI image & text recognition, cross-checked against the USPTO trademark register.",
+    "disclaimer": "Screening aid — not legal advice. Every match links to the official register so you can verify it yourself."
   },
   "nav": {
-    "new": "New analysis",
-    "batches": "Batches"
+    "new": "New check",
+    "batches": "Batches",
+    "dashboard": "Dashboard"
   },
   "meta": {
+    "prompt": "Where will you sell? Verdicts change with it:",
     "targetMarkets": "Target markets",
     "sellingPlatforms": "Selling platforms",
     "marketsHelp": "Each market has its own register and its own parody rules.",
-    "platformsHelp": "Stricter platforms escalate severity — the same art can be SAFE on Shopify and BLOCKED on Amazon Merch."
+    "platformsHelp": "Stricter platforms escalate severity — the same art can be SAFE on Shopify and BLOCKED on Amazon Merch.",
+    "markets": "Markets",
+    "platforms": "Platforms"
   },
   "health": {
     "backendUnreachable": "Backend unreachable",
@@ -87,7 +198,7 @@
     "inputMethod": "Input method",
     "jobId": "job",
     "exportCsv": "Export CSV",
-    "exportExcel": "Export Excel",
+    "exportExcel": "Export XLSX",
     "analysed": "analysed…",
     "totalDesigns": "Total designs",
     "verdict": "Verdict",
@@ -97,7 +208,10 @@
     "nichePlaceholder": "e.g. Halloween",
     "shown": "shown",
     "findings": "finding(s)",
-    "noMatch": "No designs match these filters."
+    "noMatch": "No designs match these filters.",
+    "exportSheet": "Export review sheet",
+    "exportSheetHint": "One row per design with the artwork embedded in the cell — the organiser's column layout",
+    "allBatches": "All batches"
   },
   "categories": {
     "copyrighted_character": "copyrighted character",
@@ -110,6 +224,8 @@
   },
   "detail": {
     "noPreview": "No preview available.",
+    "openOriginal": "Open original",
+    "previewNote": "Showing a downscaled preview",
     "niche": "Niche",
     "primary": "Primary",
     "subNiche": "Sub-niche",
@@ -118,10 +234,11 @@
     "motifs": "Motifs",
     "textInDesign": "Text in design",
     "findings": "Findings",
-    "noIssues": "No IP or policy issues detected in this design.",
+    "noIssues": "No issues found. Every word and image was checked against the trademark register and known characters, logos and public figures — nothing matched.",
     "rightsHolder": "Rights holder",
     "location": "Location",
     "howToFix": "How to fix",
+    "howWeFoundIt": "How we found it",
     "registerMatches": "Register matches",
     "text": "Text",
     "registeredMark": "Registered mark",
@@ -130,7 +247,16 @@
     "verify": "verify",
     "box": "box",
     "reasoning": "Reasoning",
-    "policyNotes": "Policy notes"
+    "policyNotes": "Policy notes",
+    "safeCaveat": "SAFE means nothing was found — it is not a legal review.",
+    "acceptRisk": "Accept risk",
+    "riskAcceptedUndo": "Risk accepted ✓ — undo",
+    "reportFalseAlarm": "Report false alarm",
+    "reportedUndo": "Reported ✓ — undo",
+    "previous": "Previous design",
+    "next": "Next design",
+    "of": "of",
+    "keyboardHint": "↑↓ or J/K to move between designs · Esc to close"
   },
   "severity": {
     "critical": "critical",
@@ -163,5 +289,44 @@
     "SAFE": "SAFE",
     "RISKY": "RISKY",
     "BLOCKED": "BLOCKED"
+  },
+  "date": {
+    "all": "All time",
+    "7d": "Last 7 days",
+    "30d": "Last 30 days",
+    "custom": "Custom",
+    "from": "From date",
+    "to": "To date",
+    "label": "Date"
+  },
+  "log": {
+    "title": "History log",
+    "subtitle": "Every scan, import and review decision",
+    "entries": "entries",
+    "when": "Date & time",
+    "activity": "Activity",
+    "details": "Details",
+    "kind": {
+      "scan": "Scan",
+      "import": "Import",
+      "review": "Review"
+    },
+    "scanDone": "Batch scan completed — {n} designs",
+    "scanRunning": "Batch scan running — {n} of {m}",
+    "noVerdictsYet": "no verdicts yet",
+    "import": {
+      "csv": "CSV imported",
+      "link": "Links imported",
+      "folder": "Drive folder imported",
+      "upload": "Files uploaded"
+    },
+    "review": {
+      "accepted": "Risk accepted — {name}",
+      "reported": "Reported as false alarm — {name}"
+    },
+    "reviewLocal": "Your own note, stored in this browser only",
+    "noActivity": "No activity in the selected date range.",
+    "showAll": "Show all time",
+    "scanDoneOne": "Single scan completed"
   }
 }

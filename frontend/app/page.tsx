@@ -1,13 +1,18 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import HealthBar from "@/components/HealthBar";
 import MetadataPicker from "@/components/MetadataPicker";
 import { api, type Metadata } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
 
 type Tab = "upload" | "csv" | "link" | "folder";
+
+const ACCEPT = ".png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.gif,.heic,.psd,.pdf,.ai,.eps";
+
+/** Identity for de-duplicating a re-picked or re-dropped file. */
+const keyOf = (f: File) => `${f.name}:${f.size}:${f.lastModified}`;
 
 export default function Home() {
   const { t, lang } = useTranslation();
@@ -16,6 +21,7 @@ export default function Home() {
   const [metaState, setMeta] = useState<Metadata>({ markets: ["US"], platforms: ["etsy"] });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   const [files, setFiles] = useState<File[]>([]);
   const [csv, setCsv] = useState<File | null>(null);
@@ -23,12 +29,60 @@ export default function Home() {
   const [links, setLinks] = useState("");
   const [folder, setFolder] = useState("");
 
-  const TABS: { key: Tab; label: string; hint: string }[] = [
-    { key: "upload", label: t("tabs.upload"), hint: t("hints.upload") },
-    { key: "csv", label: t("tabs.csv"), hint: t("hints.csv") },
-    { key: "link", label: t("tabs.link"), hint: t("hints.link") },
-    { key: "folder", label: t("tabs.folder"), hint: t("hints.folder") },
+  // The hero only earns its space before the first batch exists. `null` means
+  // "not known yet" so neither state flashes while the request is in flight.
+  const [firstRun, setFirstRun] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    api
+      .jobs()
+      .then((r) => setFirstRun(r.jobs.length === 0))
+      .catch(() => setFirstRun(false));
+  }, []);
+
+  const TABS: { key: Tab; label: string }[] = [
+    { key: "upload", label: t("tabs.upload") },
+    { key: "csv", label: t("tabs.csv") },
+    { key: "link", label: t("tabs.link") },
+    { key: "folder", label: t("tabs.folder") },
   ];
+
+  /** Add to the selection rather than replace it — picking twice should mean
+   *  "and also these", which is what dropping twice already means. */
+  function addFiles(incoming: FileList | File[] | null) {
+    const list = Array.from(incoming ?? []);
+    if (!list.length) return;
+    setFiles((prev) => {
+      const seen = new Set(prev.map(keyOf));
+      return [...prev, ...list.filter((f) => !seen.has(keyOf(f)))];
+    });
+  }
+
+  const dragProps = {
+    onDragOver: (e: React.DragEvent) => {
+      e.preventDefault();
+      if (!dragging) setDragging(true);
+    },
+    onDragLeave: (e: React.DragEvent) => {
+      e.preventDefault();
+      // Ignore the leave events fired when the pointer crosses a child element.
+      if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+      setDragging(false);
+    },
+  };
+
+  function dropFiles(e: React.DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    addFiles(e.dataTransfer.files);
+  }
+
+  function dropCsv(e: React.DragEvent) {
+    e.preventDefault();
+    setDragging(false);
+    const f = e.dataTransfer.files?.[0];
+    if (f) setCsv(f);
+  }
 
   async function submit() {
     setBusy(true);
@@ -62,108 +116,217 @@ export default function Home() {
     }
   }
 
+  const analyzeLabel = busy
+    ? `${t("buttons.submit")}…`
+    : files.length > 1
+      ? t("buttons.analyseMany").replace("{n}", String(files.length))
+      : t("buttons.analyseOne");
+
   return (
     <main className="shell">
-      <HealthBar />
+      {firstRun && (
+        <section className="hero">
+          <div>
+            <h1>{t("hero.title")}</h1>
+            <p>{t("hero.lede")}</p>
+          </div>
+          <div className="steps">
+            {([1, 2, 3] as const).map((n) => (
+              <div key={n}>
+                <span className="num">{n}</span>
+                <div>
+                  <strong>{t(`hero.step${n}`)}</strong>
+                  <br />
+                  {t(`hero.step${n}detail`)}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
-      <div className="card">
-        <div className="tabs">
-          {TABS.map((t) => (
-            <button key={t.key} data-active={tab === t.key} onClick={() => setTab(t.key)}>
-              {t.label}
-            </button>
-          ))}
+      <section className="panel" style={{ marginTop: 28, marginBottom: 24 }}>
+        <div className="panel-head">
+          <div>
+            <h2>{t("newCheck.title")}</h2>
+            <div className="sub">{t("newCheck.formats")}</div>
+          </div>
+          <div className="pills">
+            {TABS.map((x) => (
+              <button
+                key={x.key}
+                type="button"
+                aria-pressed={tab === x.key}
+                onClick={() => setTab(x.key)}
+              >
+                {x.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <p className="muted" style={{ marginTop: 0 }}>
-          {TABS.find((t) => t.key === tab)!.hint}
-        </p>
-
         {tab === "upload" && (
-          <div className="field">
-            <label>{t("labels.designFiles")}</label>
-            <input
-              type="file"
-              multiple
-              accept=".png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.gif,.heic,.psd,.pdf,.ai,.eps"
-              onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-            />
+          <>
+            <div className="dropzone" data-over={dragging} {...dragProps} onDrop={dropFiles}>
+              <input
+                id="file-input"
+                type="file"
+                multiple
+                accept={ACCEPT}
+                onChange={(e) => {
+                  addFiles(e.target.files);
+                  // Reset so re-picking the same file fires change again.
+                  e.target.value = "";
+                }}
+                style={{ display: "none" }}
+              />
+              <div className="row" style={{ justifyContent: "center" }}>
+                <label htmlFor="file-input" className="btn btn-primary">
+                  {t("buttons.browseFiles")}
+                </label>
+                <span style={{ fontSize: 15, color: "var(--color-neutral-700)" }}>
+                  {t("newCheck.dropHere")}
+                </span>
+              </div>
+              <div className="hint">{t("newCheck.eachVerdict")}</div>
+              {files.length > 0 && (
+                <div className="row" style={{ justifyContent: "center", marginTop: 14, gap: 6 }}>
+                  {files.map((f) => (
+                    <span key={keyOf(f)} className="file-chip">
+                      {f.name}
+                      <button
+                        type="button"
+                        aria-label={t("buttons.removeFile")}
+                        onClick={() => setFiles((prev) => prev.filter((x) => keyOf(x) !== keyOf(f)))}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
             {files.length > 0 && (
-              <p className="muted" style={{ marginBottom: 0 }}>
-                {files.length} {t("labels.filesSelected")}
-              </p>
+              <div className="row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+                <button type="button" className="btn btn-ghost" onClick={() => setFiles([])}>
+                  {t("buttons.removeAll")}
+                </button>
+                <button type="button" className="btn btn-primary btn-lg" onClick={submit} disabled={busy}>
+                  {analyzeLabel}
+                </button>
+              </div>
             )}
-          </div>
+          </>
         )}
 
         {tab === "csv" && (
           <>
-            <div className="field">
-              <label>{t("labels.csvManifest")}</label>
+            <div className="dropzone" data-over={dragging} {...dragProps} onDrop={dropCsv}>
               <input
+                id="csv-input"
                 type="file"
                 accept=".csv,.tsv,.txt"
                 onChange={(e) => setCsv(e.target.files?.[0] ?? null)}
+                style={{ display: "none" }}
               />
-              <p className="muted" style={{ marginBottom: 0 }}>
-                {t("messages.csvColumnsHelp")} <code>filename</code>, <code>url</code> /{" "}
-                <code>link</code>, <code>title</code>, <code>markets</code>, <code>platforms</code>,{" "}
-                <code>notes</code>. {t("messages.csvOverrideHelp")}
-              </p>
-            </div>
-            <div className="field">
-              <label>{t("labels.attachments")}</label>
               <input
+                id="csv-attachments"
                 type="file"
                 multiple
+                accept={ACCEPT}
                 onChange={(e) => setCsvAttachments(Array.from(e.target.files ?? []))}
+                style={{ display: "none" }}
               />
-              <p className="muted" style={{ marginBottom: 0 }}>
-                {t("messages.csvAttachmentsHelp")}
-              </p>
+              <div className="row" style={{ justifyContent: "center" }}>
+                <label htmlFor="csv-input" className="btn btn-primary">
+                  {t("buttons.browseCsv")}
+                </label>
+                <span style={{ fontSize: 15, color: "var(--color-neutral-700)" }}>
+                  {t("newCheck.dropCsv")}
+                </span>
+              </div>
+              <div className="hint">{t("newCheck.csvColumns")}</div>
+              <div className="row" style={{ justifyContent: "center", marginTop: 14, gap: 6 }}>
+                {csv && (
+                  <span className="file-chip">
+                    {csv.name}
+                    <button
+                      type="button"
+                      aria-label={t("buttons.removeFile")}
+                      onClick={() => setCsv(null)}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                )}
+                {/* Only meaningful when the CSV names local files rather than
+                    URLs — offered next to the CSV so the pairing is obvious. */}
+                <label htmlFor="csv-attachments" className="btn btn-ghost">
+                  {csvAttachments.length
+                    ? t("buttons.attachedN").replace("{n}", String(csvAttachments.length))
+                    : t("buttons.attachFiles")}
+                </label>
+              </div>
             </div>
+            {csv && (
+              <div className="row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+                <button type="button" className="btn btn-primary btn-lg" onClick={submit} disabled={busy}>
+                  {busy ? `${t("buttons.submit")}…` : t("buttons.analyseBatch")}
+                </button>
+              </div>
+            )}
           </>
         )}
 
         {tab === "link" && (
-          <div className="field">
-            <label>{t("labels.urls")}</label>
-            <textarea
-              value={links}
-              placeholder={
-                "https://drive.google.com/file/d/FILE_ID/view\nhttps://www.dropbox.com/s/xxx/design.png?dl=0\nhttps://bucket.s3.amazonaws.com/art.png"
-              }
-              onChange={(e) => setLinks(e.target.value)}
-            />
+          <div className="pad">
+            <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+              <textarea
+                value={links}
+                placeholder={t("newCheck.linkPlaceholder")}
+                onChange={(e) => setLinks(e.target.value)}
+                style={{ minHeight: 64 }}
+              />
+              <button type="button" className="btn btn-primary" onClick={submit} disabled={busy}>
+                {busy ? `${t("buttons.submit")}…` : t("buttons.fetch")}
+              </button>
+            </div>
+            <div className="hint" style={{ textAlign: "left" }}>
+              {t("newCheck.linkHint")}
+            </div>
           </div>
         )}
 
         {tab === "folder" && (
-          <div className="field">
-            <label>{t("labels.googleDriveFolder")}</label>
-            <input
-              type="text"
-              value={folder}
-              placeholder="https://drive.google.com/drive/folders/FOLDER_ID"
-              onChange={(e) => setFolder(e.target.value)}
-            />
-            <p className="muted" style={{ marginBottom: 0 }}>
+          <div className="pad">
+            <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+              <input
+                type="text"
+                value={folder}
+                placeholder="https://drive.google.com/drive/folders/FOLDER_ID"
+                onChange={(e) => setFolder(e.target.value)}
+              />
+              <button type="button" className="btn btn-primary" onClick={submit} disabled={busy}>
+                {busy ? `${t("buttons.submit")}…` : t("buttons.connect")}
+              </button>
+            </div>
+            <div className="hint" style={{ textAlign: "left" }}>
               {t("messages.driveFolderHelpPrefix")} <code>GOOGLE_API_KEY</code>{" "}
               {t("messages.driveFolderHelpSuffix")}
-            </p>
+            </div>
           </div>
         )}
 
-        <hr style={{ border: 0, borderTop: "1px solid var(--border)", margin: "18px 0" }} />
-
         <MetadataPicker value={metaState} onChange={setMeta} />
 
-        {error && <div className="error" style={{ marginBottom: 12 }}>{error}</div>}
+        {error && (
+          <div className="error" style={{ marginTop: 14, marginBottom: 0 }}>
+            {error}
+          </div>
+        )}
+      </section>
 
-        <button className="primary" onClick={submit} disabled={busy}>
-          {busy ? t("buttons.submit") + "…" : t("buttons.submit")}
-        </button>
-      </div>
+      <HealthBar />
     </main>
   );
 }

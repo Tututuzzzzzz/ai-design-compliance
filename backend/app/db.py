@@ -163,6 +163,18 @@ def mark_design_running(design_id: str) -> None:
         conn.execute("UPDATE designs SET status='running' WHERE id=?", (design_id,))
 
 
+def set_design_path(design_id: str, path: str) -> None:
+    """Record where the original file landed.
+
+    Uploads know their path at enqueue time; link/CSV/folder rows do not — the
+    worker only resolves it after fetching. Without this the original is on disk
+    but unreachable, so `/api/designs/{id}/original` would 404 for every design
+    that came from a URL.
+    """
+    with tx() as conn:
+        conn.execute("UPDATE designs SET path=? WHERE id=?", (path, design_id))
+
+
 def save_report(design_id: str, report: dict[str, Any]) -> None:
     with tx() as conn:
         conn.execute(
@@ -196,7 +208,17 @@ def list_designs(
     verdict: str | None = None,
     niche: str | None = None,
     category: str | None = None,
+    since: float | None = None,
+    until: float | None = None,
+    limit: int | None = None,
 ) -> list[dict[str, Any]]:
+    """Rows for the report grid, newest last.
+
+    `since`/`until` are epoch seconds bounding `created_at` — the scan-window
+    filter the dashboard exposes. `limit` keeps an unscoped query (no job_id)
+    from serialising every report ever produced; it takes the *newest* rows,
+    since that is what an unscoped view is asking for.
+    """
     sql = "SELECT * FROM designs WHERE 1=1"
     args: list[Any] = []
     if job_id:
@@ -208,10 +230,25 @@ def list_designs(
     if niche:
         sql += " AND niche LIKE ?"
         args.append(f"%{niche}%")
-    sql += " ORDER BY created_at ASC"
+    if since is not None:
+        sql += " AND created_at >= ?"
+        args.append(since)
+    if until is not None:
+        sql += " AND created_at <= ?"
+        args.append(until)
+
+    if limit:
+        # Newest-first for the cut, then flipped back so callers always see the
+        # same ascending order regardless of whether a limit was applied.
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        args.append(limit)
+    else:
+        sql += " ORDER BY created_at ASC"
 
     with tx() as conn:
         rows = conn.execute(sql, args).fetchall()
+    if limit:
+        rows = list(reversed(rows))
 
     items = [_design_row(r) for r in rows]
     if category:

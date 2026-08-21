@@ -1,10 +1,16 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 import DesignDetail from "@/components/DesignDetail";
+import ExportView from "@/components/ExportView";
+import ReportTable, { sortDesigns, type SortKey } from "@/components/ReportTable";
+import StatCards from "@/components/StatCards";
 import { api } from "@/lib/api";
+import { stamp } from "@/lib/dates";
+import { useFlags } from "@/lib/flags";
 import { useTranslation } from "@/lib/i18n";
-import type { Design, Job } from "@/lib/types";
+import type { Design, Job, VerdictValue } from "@/lib/types";
 
 const CATEGORIES = [
   "copyrighted_character",
@@ -16,24 +22,35 @@ const CATEGORIES = [
   "prohibited_content",
 ];
 
+type View = "dashboard" | "export";
+
+/**
+ * One batch. Same views as the cross-batch dashboard minus the scan-window
+ * filter — every design here was scanned in the same run, so a date range would
+ * be a control that never changes anything.
+ */
 export default function JobPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const { t, lang } = useTranslation();
+  const { flags, setFlag } = useFlags();
 
   const [job, setJob] = useState<Job | null>(null);
   const [designs, setDesigns] = useState<Design[]>([]);
-  const [verdict, setVerdict] = useState("");
-  const [category, setCategory] = useState("");
-  const [niche, setNiche] = useState("");
-  const [selected, setSelected] = useState<Design | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const [view, setView] = useState<View>("dashboard");
+  const [filter, setFilter] = useState<"ALL" | VerdictValue>("ALL");
+  const [category, setCategory] = useState("");
+  const [q, setQ] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("verdict");
+  const [sortDir, setSortDir] = useState(1);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [showProcessing, setShowProcessing] = useState(true);
+  const [toast, setToast] = useState("");
 
   const refresh = useCallback(async () => {
     try {
-      const [j, d] = await Promise.all([
-        api.job(id),
-        api.designs({ job_id: id, verdict, category, niche }),
-      ]);
+      const [j, d] = await Promise.all([api.job(id), api.designs({ job_id: id, category })]);
       setJob(j);
       setDesigns(d.designs);
       setError(null);
@@ -42,12 +59,11 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
       setError(String((e as Error).message ?? e));
       return null;
     }
-  }, [id, verdict, category, niche]);
+  }, [id, category]);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
     let stop = false;
-
     const tick = async () => {
       const j = await refresh();
       if (stop) return;
@@ -56,156 +72,278 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
       timer = setTimeout(tick, running ? 2500 : 15000);
     };
     tick();
-
     return () => {
       stop = true;
       clearTimeout(timer);
     };
   }, [refresh]);
 
-  const stats = job?.stats ?? { SAFE: 0, RISKY: 0, BLOCKED: 0, FAILED: 0 };
   const processed = job ? job.done + job.failed : 0;
+  const running = !!job && (job.total === 0 || processed < job.total);
   const pct = job && job.total ? Math.round((processed / job.total) * 100) : 0;
-  const sourceLabel = (value: string) => t(`source.${value}`) || value;
-  const statusLabel = (value: string) => t(`status.${value}`) || value;
-  const verdictLabel = (value: string) => t(`verdict.${value}`) || value;
+
+  const avgSeconds = useMemo(() => {
+    const ms = designs.map((d) => d.report?.duration_ms ?? 0).filter((v) => v > 0);
+    if (!ms.length) return null;
+    return (ms.reduce((a, b) => a + b, 0) / ms.length / 1000).toFixed(1);
+  }, [designs]);
+
+  const visible = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    const matched = designs
+      .filter((d) => filter === "ALL" || d.verdict === filter)
+      .filter((d) => !needle || `${d.filename} ${d.niche ?? ""}`.toLowerCase().includes(needle));
+    return sortDesigns(matched, sortKey, sortDir, flags);
+  }, [designs, filter, q, sortKey, sortDir, flags]);
+
+  useEffect(() => {
+    if (selected && !visible.some((d) => d.id === selected)) {
+      setSelected(visible.length ? visible[0].id : null);
+    }
+  }, [visible, selected]);
+
+  const selIndex = visible.findIndex((d) => d.id === selected);
+  const selectedDesign = selIndex >= 0 ? visible[selIndex] : null;
+
+  const counts = { SAFE: 0, RISKY: 0, BLOCKED: 0 };
+  for (const d of designs) if (d.verdict && d.verdict in counts) counts[d.verdict]++;
+
+  const scanned = job ? stamp(job.created_at, lang) : "";
+  const exportFilters = { verdict: filter === "ALL" ? "" : filter, category, lang };
+
+  const appliedLabel = [
+    filter !== "ALL" ? `${t("job.verdict")}: ${t(`verdict.${filter}`)}` : "",
+    category ? `${t("job.violationType")}: ${t(`categories.${category}`)}` : "",
+    q.trim() ? `${t("export.search")}: "${q.trim()}"` : "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  function clearFilters() {
+    setQ("");
+    setFilter("ALL");
+    setCategory("");
+  }
+
+  const subtitle = `${scanned} · ${job?.total ?? 0} ${t("proc.designs")}${
+    avgSeconds ? ` · ${t("proc.about")} ${avgSeconds}${t("messages.duration")} ${t("proc.each")}` : ""
+  }`;
 
   return (
     <main className="shell">
       {error && <div className="error">{error}</div>}
 
-      <div className="card">
-        <div className="row">
-          <div>
-            <h2 style={{ marginBottom: 2 }}>{job?.label ?? t("job.batch")}</h2>
-            <p className="muted" style={{ margin: 0 }}>
-              {t("job.inputMethod")}: <strong>{job?.source ? sourceLabel(job.source) : "-"}</strong> · {t("job.jobId")}{" "}
-              <code>{id}</code>
-            </p>
-          </div>
-          <div className="spacer" />
-          <a className="ghost" href={api.exportUrl(id, "csv", { verdict, category, lang })}>
-            {t("job.exportCsv")}
-          </a>
-          <a className="ghost" href={api.exportUrl(id, "xlsx", { verdict, category, lang })}>
-            {t("job.exportExcel")}
-          </a>
+      <div className="row" style={{ marginBottom: 28, justifyContent: "space-between" }}>
+        <div className="tabs">
+          {(["dashboard", "export"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              aria-current={view === v ? "page" : undefined}
+              onClick={() => setView(v)}
+            >
+              {t(`view.${v}`)}
+            </button>
+          ))}
         </div>
+        <Link href="/dashboard" className="btn btn-ghost">
+          {t("job.allBatches")} →
+        </Link>
+      </div>
 
-        {job && job.total > 0 && processed < job.total && (
-          <div style={{ marginTop: 14 }}>
+      {/* ---- Processing ------------------------------------------------- */}
+      {view === "dashboard" && running && showProcessing && (
+        <section className="section">
+          <div className="panel-head">
+            <h2>{t("proc.title")}</h2>
+            <div className="row">
+              <span className="muted">
+                {job?.total} {t("proc.designs")}
+                {avgSeconds
+                  ? ` · ${t("proc.about")} ${avgSeconds}${t("messages.duration")} ${t("proc.each")}`
+                  : ""}
+              </span>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setShowProcessing(false)}
+              >
+                {t("proc.viewResults")}
+              </button>
+            </div>
+          </div>
+          <p className="muted">{t("proc.steps")}</p>
+
+          <div className="panel" style={{ marginBottom: 14 }}>
+            <div
+              className="row"
+              style={{ justifyContent: "space-between", fontWeight: 600, marginBottom: 8 }}
+            >
+              <span>
+                {processed} {t("proc.of")} {job?.total} {t("proc.complete")}
+              </span>
+              <span className="muted">{pct}%</span>
+            </div>
             <div className="progress">
               <span style={{ width: `${pct}%` }} />
             </div>
-            <p className="muted" style={{ marginBottom: 0 }}>
-              {processed} / {job.total} {t("job.analysed")}
-            </p>
           </div>
-        )}
-      </div>
 
-      <div className="card">
-        <div className="stats">
-          <div className="stat">
-            <div className="n">{job?.total ?? 0}</div>
-            <div className="k">{t("job.totalDesigns")}</div>
-          </div>
-          <div className="stat">
-            <div className="n" style={{ color: "var(--safe)" }}>
-              {stats.SAFE}
-            </div>
-            <div className="k">{t("labels.safe")}</div>
-          </div>
-          <div className="stat">
-            <div className="n" style={{ color: "var(--risky)" }}>
-              {stats.RISKY}
-            </div>
-            <div className="k">{t("labels.risky")}</div>
-          </div>
-          <div className="stat">
-            <div className="n" style={{ color: "var(--blocked)" }}>
-              {stats.BLOCKED}
-            </div>
-            <div className="k">{t("labels.blocked")}</div>
-          </div>
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="row">
-          <div style={{ minWidth: 160 }}>
-            <label>{t("job.verdict")}</label>
-            <select value={verdict} onChange={(e) => setVerdict(e.target.value)}>
-              <option value="">{t("job.all")}</option>
-              <option value="SAFE">{verdictLabel("SAFE")}</option>
-              <option value="RISKY">{verdictLabel("RISKY")}</option>
-              <option value="BLOCKED">{verdictLabel("BLOCKED")}</option>
-            </select>
-          </div>
-          <div style={{ minWidth: 220 }}>
-            <label>{t("job.violationType")}</label>
-            <select value={category} onChange={(e) => setCategory(e.target.value)}>
-              <option value="">{t("job.all")}</option>
-              {CATEGORIES.map((c) => (
-                <option key={c} value={c}>
-                  {t(`categories.${c}`)}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div style={{ minWidth: 200 }}>
-            <label>{t("job.nicheContains")}</label>
-            <input
-              type="text"
-              value={niche}
-              placeholder={t("job.nichePlaceholder")}
-              onChange={(e) => setNiche(e.target.value)}
-            />
-          </div>
-          <div className="spacer" />
-          <span className="muted">{designs.length} {t("job.shown")}</span>
-        </div>
-      </div>
-
-      <div className="grid cards" style={{ marginTop: 16 }}>
-        {designs.map((d) => (
-          <div key={d.id} className="design" onClick={() => setSelected(d)}>
-            <div className="thumb">
-              {d.report?.preview_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={d.report.annotated_url ?? d.report.preview_url} alt={d.filename} />
-              ) : (
-                <span className="muted">{statusLabel(d.status)}</span>
-              )}
-            </div>
-            <div className="body">
-              <div className="name" title={d.filename}>
-                {d.filename}
-              </div>
-              <div className="row" style={{ gap: 6, marginTop: 6 }}>
-                <span className={`badge ${d.verdict ?? "PENDING"}`}>
-                  {d.verdict ? verdictLabel(d.verdict) : statusLabel(d.status)}
-                </span>
-                {d.confidence != null && <span className="muted">{d.confidence}%</span>}
-              </div>
-              <div className="meta">
-                {d.niche ?? "—"}
-                {d.report ? ` · ${d.report.findings.length} ${t("job.findings")}` : ""}
-              </div>
+          <div className="report-scroll">
+            <div style={{ minWidth: 680 }}>
+              {designs.map((d) => {
+                const done = d.status === "done" || d.status === "failed";
+                const verdict = d.verdict ?? "PENDING";
+                return (
+                  <div key={d.id} className="proc-row">
+                    <div className="row" style={{ gap: 12, flexWrap: "nowrap", minWidth: 0 }}>
+                      <span
+                        className={`tile ${done ? verdict : "PENDING"}`}
+                        style={{ width: 30, height: 30, fontSize: 14 }}
+                      >
+                        {d.filename.charAt(0).toUpperCase()}
+                      </span>
+                      <span className="name">{d.filename}</span>
+                    </div>
+                    <div
+                      className="row"
+                      style={{ gap: 8, fontSize: 13, color: "var(--color-neutral-700)" }}
+                    >
+                      <span
+                        className="dot"
+                        data-live={d.status === "running"}
+                        style={{
+                          background:
+                            d.status === "running" ? "var(--color-accent-2-600)" : undefined,
+                        }}
+                      />
+                      {t(`proc.note.${d.status}`)}
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <span className={`badge ${done ? verdict : "PENDING"}`}>
+                        {d.verdict ? t(`verdict.${d.verdict}`) : t(`status.${d.status}`)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        ))}
-      </div>
-
-      {designs.length === 0 && job && processed > 0 && (
-        <p className="muted">{t("job.noMatch")}</p>
+        </section>
       )}
 
-      {selected && (
-        <DesignDetail
-          design={designs.find((d) => d.id === selected.id) ?? selected}
-          onClose={() => setSelected(null)}
+      {/* ---- Dashboard -------------------------------------------------- */}
+      {view === "dashboard" && !(running && showProcessing) && (
+        <>
+          <StatCards designs={designs} />
+
+          <section>
+            <div className="panel-head">
+              <div>
+                <h2>{job?.label || t("report.title")}</h2>
+                <div className="sub">{subtitle}</div>
+              </div>
+              <div className="row">
+                <input
+                  type="search"
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder={t("report.searchPlaceholder")}
+                  aria-label={t("report.searchPlaceholder")}
+                  style={{ width: 190 }}
+                />
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                  aria-label={t("job.violationType")}
+                  style={{ width: 180 }}
+                >
+                  <option value="">{t("report.allCategories")}</option>
+                  {CATEGORIES.map((c) => (
+                    <option key={c} value={c}>
+                      {t(`categories.${c}`)}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" className="btn btn-ghost" onClick={() => setView("export")}>
+                  {t("report.exportReport")}
+                </button>
+                <a className="btn btn-primary" href={api.exportUrl(id, "xlsx", exportFilters)}>
+                  {t("job.exportExcel")}
+                </a>
+              </div>
+            </div>
+
+            <div className="tabs" style={{ marginBottom: 12 }}>
+              {(["ALL", "BLOCKED", "RISKY", "SAFE"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  aria-pressed={filter === k}
+                  onClick={() => setFilter(k)}
+                >
+                  {k === "ALL" ? t("job.all") : `${t(`verdict.${k}`)} ${counts[k]}`}
+                </button>
+              ))}
+            </div>
+
+            <ReportTable
+              designs={visible}
+              selected={selected}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              flags={flags}
+              onSort={(k) => {
+                if (k === sortKey) setSortDir((d) => -d);
+                else {
+                  setSortKey(k);
+                  setSortDir(1);
+                }
+              }}
+              onSelect={setSelected}
+              onClearFilters={clearFilters}
+            />
+            <div className="note">{t("report.confidenceNote")}</div>
+          </section>
+        </>
+      )}
+
+      {view === "export" && (
+        <ExportView
+          designs={visible}
+          subtitle={`${scanned} · ${t("export.filtersApply")}`}
+          appliedLabel={appliedLabel}
+          urlFor={(format) => api.exportUrl(id, format, exportFilters)}
+          flags={flags}
+          onClearFilters={clearFilters}
         />
+      )}
+
+      {selectedDesign && (
+        <DesignDetail
+          design={selectedDesign}
+          position={selIndex + 1}
+          total={visible.length}
+          flag={flags[selectedDesign.id] ?? null}
+          onFlag={(f) => {
+            setFlag(selectedDesign.id, f, selectedDesign.filename);
+            setToast(f ? t(`flag.${f}`) : t("flag.cleared"));
+            setTimeout(() => setToast(""), 2500);
+          }}
+          onPrev={() => selIndex > 0 && setSelected(visible[selIndex - 1].id)}
+          onNext={() => selIndex < visible.length - 1 && setSelected(visible[selIndex + 1].id)}
+          onClose={() => {
+            const returning = selectedDesign.id;
+            setSelected(null);
+            setTimeout(() => document.getElementById(`row-${returning}`)?.focus(), 40);
+          }}
+        />
+      )}
+
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+        </div>
       )}
     </main>
   );

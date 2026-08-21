@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     ocr_timeout_s: float = 20.0
     ocr_max_attempts: int = 2
     render_max_edge: int = 1600  # long-edge px sent to the vision model
+    #: Long-edge px of the derivative the UI serves. The vision render is deleted
+    #: once analysis finishes, so this is the image the dashboard and the
+    #: annotated overlay are built from — it has to outlive the analysis.
+    preview_max_edge: int = 800
 
     @property
     def uploads_dir(self) -> Path:

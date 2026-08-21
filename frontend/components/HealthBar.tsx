@@ -14,7 +14,12 @@ export default function HealthBar() {
     api.health().then(setHealth).catch((e) => setError(String(e.message ?? e)));
   }, []);
 
-  if (error) return <div className="error">{t("health.backendUnreachable")}: {error}</div>;
+  if (error)
+    return (
+      <div className="error">
+        {t("health.backendUnreachable")}: {error}
+      </div>
+    );
   if (!health) return null;
 
   const ocrLabel =
@@ -27,7 +32,7 @@ export default function HealthBar() {
   const items = [
     {
       k: t("health.visionModel"),
-      v: `${health.vision.model}`,
+      v: health.vision.model,
       warn: !health.vision.configured,
       hint: health.vision.configured ? null : t("health.noApiKey"),
     },
@@ -38,22 +43,24 @@ export default function HealthBar() {
         ? `${health.trademark.marks.toLocaleString()} ${t("health.marks")}`
         : t("health.notBuilt"),
       warn: !health.trademark.available,
-      hint: health.trademark.available
-        ? null
-        : t("health.trademarkHint"),
+      hint: health.trademark.available ? null : t("health.trademarkHint"),
     },
     { k: t("health.workers"), v: String(health.queue.workers), warn: false, hint: null },
   ];
 
   return (
-    <div className="card">
-      <div className="row" style={{ gap: 22 }}>
+    <section className="panel">
+      <div className="row" style={{ gap: 30 }}>
         {items.map((i) => (
           <div key={i.k}>
-            <div className="muted" style={{ fontSize: 11, textTransform: "uppercase" }}>
-              {i.k}
-            </div>
-            <div style={{ fontSize: 13, color: i.warn ? "var(--risky)" : "var(--text)" }}>
+            <h3 style={{ margin: 0 }}>{i.k}</h3>
+            <div
+              style={{
+                fontSize: 14,
+                fontWeight: 600,
+                color: i.warn ? "var(--risky-fg)" : "var(--color-text)",
+              }}
+            >
               {i.v}
             </div>
           </div>
@@ -66,6 +73,6 @@ export default function HealthBar() {
             {i.k}: {i.hint}
           </p>
         ))}
-    </div>
+    </section>
   );
 }

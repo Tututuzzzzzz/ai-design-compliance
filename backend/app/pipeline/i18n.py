@@ -376,6 +376,7 @@ def t(key: str, lang: Lang, **kwargs: object) -> str:
 EXPORT: dict[Lang, dict[str, str]] = {
     "en": {
         "filename": "Filename",
+        "scanned": "Scanned",
         "verdict": "Verdict",
         "confidence": "Confidence %",
         "niche": "Niche",
@@ -399,6 +400,8 @@ EXPORT: dict[Lang, dict[str, str]] = {
         "sheet.summary": "Summary",
         "sheet.designs": "Designs",
         "sheet.findings": "Findings",
+        "sheet.review": "Review sheet",
+        "noPreview": "(no preview)",
         "metric": "Metric",
         "count": "Count",
         "total": "TOTAL",
@@ -413,6 +416,7 @@ EXPORT: dict[Lang, dict[str, str]] = {
     },
     "vi": {
         "filename": "Tên tệp",
+        "scanned": "Thời điểm quét",
         "verdict": "Kết luận",
         "confidence": "Độ tin cậy %",
         "niche": "Niche",
@@ -436,6 +440,8 @@ EXPORT: dict[Lang, dict[str, str]] = {
         "sheet.summary": "Tổng quan",
         "sheet.designs": "Thiết kế",
         "sheet.findings": "Phát hiện",
+        "sheet.review": "Bảng rà soát",
+        "noPreview": "(không có ảnh)",
         "metric": "Chỉ số",
         "count": "Số lượng",
         "total": "TỔNG",

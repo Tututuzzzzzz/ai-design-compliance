@@ -15,3 +15,9 @@ next-env.d.ts
 *.db-wal
 *.db-shm
 samples/output/
+
+# Real print-on-demand artwork used for local testing. Deliberately untracked:
+# these are other people's designs, and the repo's own synthetic eval set exists
+# precisely so the test corpus does not ship third-party IP. Generate a shareable
+# set with `python -m data.evalset` instead.
+samples/designs/

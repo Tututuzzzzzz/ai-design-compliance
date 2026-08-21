@@ -32,7 +32,10 @@ def render(render_path: Path, findings: list[Finding]) -> Path | None:
     if not boxed:
         return None
 
-    img = Image.open(render_path).convert("RGB")
+    # RGBA, not RGB: the preview keeps the design's transparency and converting
+    # here would composite it onto black — the boxes would arrive on a background
+    # the seller never drew.
+    img = Image.open(render_path).convert("RGBA")
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
 
@@ -56,5 +59,5 @@ def render(render_path: Path, findings: list[Finding]) -> Path | None:
         draw.text((x + 5, ly + 3), label, fill=(255, 255, 255), font=font)
 
     out = settings.renders_dir / f"annot_{uuid.uuid4().hex}.png"
-    Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB").save(out, "PNG")
+    Image.alpha_composite(img, overlay).save(out, "PNG")
     return out

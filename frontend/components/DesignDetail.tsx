@@ -1,175 +1,288 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
-import type { Design, Finding } from "@/lib/types";
+import type { Design, Finding, VerdictValue } from "@/lib/types";
+import type { Flag } from "@/lib/flags";
 
 function Evidence({ f, t }: { f: Finding; t: (key: string) => string }) {
-  const visibleEvidence = (f.evidence ?? []).filter((e) => e.source !== "vision_model");
-  if (!visibleEvidence.length) return null;
+  // The vision model is named on every finding by construction, so listing it
+  // adds nothing; what matters is which *register* confirmed the claim.
+  const rows = (f.evidence ?? []).filter((e) => e.source !== "vision_model");
+  if (!rows.length) return null;
   return (
-    <ul style={{ margin: "8px 0 0", paddingLeft: 18, fontSize: 12.5, color: "var(--muted)" }}>
-      {visibleEvidence.map((e, i) => (
-        <li key={i}>
-          <strong>{t(`evidence.${e.source}`)}</strong>: {e.detail}
-          {e.reference_id && ` (#${e.reference_id})`}
+    <div className="how">
+      {t("detail.howWeFoundIt")} ·{" "}
+      {rows.map((e, i) => (
+        <span key={i}>
+          {i > 0 && " · "}
+          {t(`evidence.${e.source}`)}
+          {e.reference_id && ` #${e.reference_id}`}
           {e.url && (
             <>
               {" — "}
-              <a href={e.url} target="_blank" rel="noreferrer">
+              <a href={e.url} target="_blank" rel="noreferrer" style={{ fontWeight: 600 }}>
                 {t("detail.verify")}
               </a>
             </>
           )}
-        </li>
+        </span>
       ))}
-    </ul>
+    </div>
   );
 }
 
-export default function DesignDetail({ design, onClose }: { design: Design; onClose: () => void }) {
+export default function DesignDetail({
+  design,
+  position,
+  total,
+  flag,
+  onFlag,
+  onPrev,
+  onNext,
+  onClose,
+}: {
+  design: Design;
+  position: number;
+  total: number;
+  flag: Flag;
+  onFlag: (flag: Flag) => void;
+  onPrev: () => void;
+  onNext: () => void;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
-  const [annotated, setAnnotated] = useState(true);
+  const [boxes, setBoxes] = useState(true);
+  const panel = useRef<HTMLDivElement>(null);
   const r = design.report;
 
-  const image = (annotated && r?.annotated_url) || r?.preview_url;
+  useEffect(() => {
+    panel.current?.focus();
+  }, []);
+
+  // Esc closes; ↑/↓ and J/K walk the batch without leaving the panel. Reviewing
+  // a batch is a keyboard job — one hand on the arrow keys, eyes on the artwork.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      const typing =
+        el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable);
+      if (e.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (typing) return;
+      if (e.key === "ArrowDown" || e.key === "j" || e.key === "J") {
+        e.preventDefault();
+        onNext();
+      } else if (e.key === "ArrowUp" || e.key === "k" || e.key === "K") {
+        e.preventDefault();
+        onPrev();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, onNext, onPrev]);
+
+  const verdict: VerdictValue | "PENDING" = r?.verdict ?? "PENDING";
+  const marked = r ? r.findings.filter((f) => f.bbox) : [];
 
   return (
     <div className="overlay" onClick={onClose}>
-      <div className="panel" onClick={(e) => e.stopPropagation()}>
-        <div className="row">
-          <div>
-            <h2 style={{ marginBottom: 4 }}>{design.filename}</h2>
-            <div className="row" style={{ gap: 8 }}>
-              <span className={`badge ${r?.verdict ?? "PENDING"}`}>
-                {r?.verdict ? t(`verdict.${r.verdict}`) : t(`status.${design.status}`)}
-              </span>
-              {r && <span className="muted">{t("messages.confidence")} {r.confidence}%</span>}
-              {r && <span className="muted">· {r.provider}</span>}
-              {r && <span className="muted">· {(r.duration_ms / 1000).toFixed(1)}{t("messages.duration")}</span>}
-            </div>
-          </div>
-          <div className="spacer" />
-          <button className="ghost" onClick={onClose}>
-            {t("buttons.close")}
+      <div
+        ref={panel}
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={design.filename}
+        tabIndex={-1}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-head">
+          <h2>{design.filename}</h2>
+          {r && (
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => onFlag(flag === "accepted" ? null : "accepted")}
+              >
+                {flag === "accepted" ? t("detail.riskAcceptedUndo") : t("detail.acceptRisk")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => onFlag(flag === "reported" ? null : "reported")}
+              >
+                {flag === "reported" ? t("detail.reportedUndo") : t("detail.reportFalseAlarm")}
+              </button>
+            </>
+          )}
+          <button type="button" className="btn-icon" aria-label={t("buttons.close")} onClick={onClose}>
+            ✕
           </button>
         </div>
 
-        {!r && <p className="muted">{t("messages.analysisInProgress")}</p>}
+        {!r && (
+          <div style={{ padding: "26px" }} className="muted">
+            {design.error ?? t("messages.analysisInProgress")}
+          </div>
+        )}
 
         {r && (
-          <div className="grid two" style={{ marginTop: 18 }}>
-            <div>
-              {image ? (
-                <>
-                  <div
-                    style={{
-                      background: "#fff",
-                      borderRadius: 10,
-                      overflow: "hidden",
-                      border: "1px solid var(--border)",
-                    }}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={image} alt={design.filename} style={{ width: "100%", display: "block" }} />
-                  </div>
-                  {r.annotated_url && (
-                    <div className="row" style={{ marginTop: 8 }}>
-                      <button className="ghost" onClick={() => setAnnotated((a) => !a)}>
-                        {annotated ? t("buttons.showOriginal") : t("buttons.showAnnotated")}
-                      </button>
-                      <span className="muted">
-                        {r.findings.filter((f) => f.bbox).length} {t("messages.marked")}
+          <div className="modal-body">
+            <div className="sticky">
+              <div className="art artboard">
+                {r.preview_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={r.preview_url} alt={design.filename} />
+                ) : (
+                  <div style={{ aspectRatio: "1/1" }} />
+                )}
+                {boxes &&
+                  marked.map((f, i) => (
+                    <div
+                      key={i}
+                      className="bbox"
+                      data-verdict={verdict}
+                      style={{
+                        left: `${f.bbox!.x * 100}%`,
+                        top: `${f.bbox!.y * 100}%`,
+                        width: `${f.bbox!.w * 100}%`,
+                        height: `${f.bbox!.h * 100}%`,
+                      }}
+                    >
+                      {/* A box hugging the top edge has no room for a label
+                          above it, and `.art` clips the overflow — so those
+                          labels sit inside the box instead of over it. */}
+                      <span data-inside={f.bbox!.y < 0.06}>
+                        {t(`categories.${f.category}`)}
                       </span>
                     </div>
-                  )}
-                </>
-              ) : (
-                <p className="muted">{t("detail.noPreview")}</p>
-              )}
+                  ))}
+              </div>
 
-              <h3 style={{ marginTop: 20 }}>{t("detail.niche")}</h3>
-              <table>
-                <tbody>
-                  <tr>
-                    <th>{t("detail.primary")}</th>
-                    <td>{r.niche.primary}</td>
-                  </tr>
-                  {r.niche.sub_niche && (
-                    <tr>
-                      <th>{t("detail.subNiche")}</th>
-                      <td>{r.niche.sub_niche}</td>
-                    </tr>
-                  )}
-                  {r.niche.audience && (
-                    <tr>
-                      <th>{t("detail.audience")}</th>
-                      <td>{r.niche.audience}</td>
-                    </tr>
-                  )}
-                  {r.niche.style.length > 0 && (
-                    <tr>
-                      <th>{t("detail.style")}</th>
-                      <td>{r.niche.style.join(", ")}</td>
-                    </tr>
-                  )}
-                  {r.niche.motifs.length > 0 && (
-                    <tr>
-                      <th>{t("detail.motifs")}</th>
-                      <td>{r.niche.motifs.join(", ")}</td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+              <div className="row" style={{ justifyContent: "center", marginTop: 14 }}>
+                <button
+                  type="button"
+                  className="btn-icon"
+                  aria-label={t("detail.previous")}
+                  disabled={position <= 1}
+                  onClick={onPrev}
+                >
+                  ‹
+                </button>
+                <span
+                  className="muted"
+                  style={{ fontSize: 13, whiteSpace: "nowrap" }}
+                  title={t("detail.keyboardHint")}
+                >
+                  {position} {t("detail.of")} {total}
+                </span>
+                <button
+                  type="button"
+                  className="btn-icon"
+                  aria-label={t("detail.next")}
+                  disabled={position >= total}
+                  onClick={onNext}
+                >
+                  ›
+                </button>
+              </div>
 
-              {r.ocr_text && (
-                <>
-                  <h3 style={{ marginTop: 20 }}>{t("detail.textInDesign")}</h3>
-                  <pre className="reasoning">{r.ocr_text}</pre>
-                </>
-              )}
+              <div className="row" style={{ justifyContent: "center", marginTop: 6 }}>
+                {marked.length > 0 && (
+                  <button type="button" className="btn btn-ghost" onClick={() => setBoxes((b) => !b)}>
+                    {boxes ? t("buttons.showOriginal") : t("buttons.showAnnotated")}
+                  </button>
+                )}
+                {r.original_url && (
+                  <a
+                    className="btn btn-ghost"
+                    href={r.original_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {t("detail.openOriginal")} ({r.image_width}×{r.image_height})
+                  </a>
+                )}
+              </div>
             </div>
 
-            <div>
-              <h3>{t("detail.findings")} ({r.findings.length})</h3>
-              {r.findings.length === 0 && (
-                <div className="ok">{t("detail.noIssues")}</div>
-              )}
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div className="row" style={{ gap: 14, fontSize: 13, color: "var(--color-neutral-700)" }}>
+                <span>
+                  <strong>{t("detail.niche")}</strong> · {r.niche.primary}
+                </span>
+                {r.niche.sub_niche && (
+                  <span>
+                    <strong>{t("detail.audience")}</strong> · {r.niche.sub_niche}
+                  </span>
+                )}
+                {r.niche.style.length > 0 && (
+                  <span>
+                    <strong>{t("detail.style")}</strong> · {r.niche.style.join(", ")}
+                  </span>
+                )}
+                {r.niche.motifs.length > 0 && (
+                  <span>
+                    <strong>{t("detail.motifs")}</strong> · {r.niche.motifs.join(", ")}
+                  </span>
+                )}
+              </div>
+
+              <div className={`verdict-card ${r.verdict}`}>
+                <div className="row" style={{ justifyContent: "space-between" }}>
+                  <div className="v">{t(`verdict.${r.verdict}`)}</div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: "0.05em" }}>
+                      {t("messages.confidence").toUpperCase()}
+                    </div>
+                    <div className="c">{r.confidence}%</div>
+                  </div>
+                </div>
+                <div className="bar">
+                  <span style={{ width: `${r.confidence}%` }} />
+                </div>
+                <p>{r.summary}</p>
+                {r.verdict === "SAFE" && (
+                  <p style={{ fontSize: 13, marginTop: 10 }}>{t("detail.safeCaveat")}</p>
+                )}
+              </div>
+
+              {r.findings.length === 0 && <div className="ok">{t("detail.noIssues")}</div>}
+
               {r.findings.map((f, i) => (
-                <div key={i} className={`finding ${f.severity}`}>
+                <div key={i} className="finding">
                   <div className="row" style={{ gap: 8 }}>
                     <span className={`sev ${f.severity}`}>{t(`severity.${f.severity}`)}</span>
-                    <span className="muted" style={{ fontSize: 12 }}>
-                      {t(`categories.${f.category}`)} · {Math.round(f.confidence * 100)}%
-                    </span>
+                    <span className="cat">{t(`categories.${f.category}`)}</span>
+                    <span className="cat">{Math.round(f.confidence * 100)}%</span>
                   </div>
-                  <div className="t" style={{ marginTop: 6 }}>
-                    {i + 1}. {f.title}
-                  </div>
-                  <p>{f.description}</p>
-                  {f.rights_holder && (
-                    <p style={{ marginTop: 0 }}>
-                      <strong>{t("detail.rightsHolder")}:</strong> {f.rights_holder}
-                    </p>
-                  )}
-                  {(f.location_hint || f.bbox) && (
-                    <p className="muted" style={{ margin: 0, fontSize: 12 }}>
-                      {t("detail.location")}: {f.location_hint}
-                      {f.bbox &&
-                        ` — ${t("detail.box")} x=${f.bbox.x.toFixed(2)} y=${f.bbox.y.toFixed(2)} w=${f.bbox.w.toFixed(2)} h=${f.bbox.h.toFixed(2)}`}
-                    </p>
+                  <div className="t">{f.title}</div>
+                  <div className="d">{f.description}</div>
+                  {(f.rights_holder || f.location_hint) && (
+                    <div className="how">
+                      {f.rights_holder && (
+                        <>
+                          <strong>{t("detail.rightsHolder")}</strong> · {f.rights_holder}
+                        </>
+                      )}
+                      {f.rights_holder && f.location_hint && " · "}
+                      {f.location_hint}
+                    </div>
                   )}
                   <Evidence f={f} t={t} />
                   <div className="fix">
-                    <strong>{t("detail.howToFix")}:</strong> {f.remediation}
+                    <strong>{t("detail.howToFix")}</strong> — {f.remediation}
                   </div>
                 </div>
               ))}
 
               {r.trademark_hits.length > 0 && (
-                <>
-                  <h3 style={{ marginTop: 22 }}>{t("detail.registerMatches")}</h3>
-                  <table>
+                <div>
+                  <h3>{t("detail.registerMatches")}</h3>
+                  <table className="table">
                     <thead>
                       <tr>
                         <th>{t("detail.text")}</th>
@@ -197,22 +310,36 @@ export default function DesignDetail({ design, onClose }: { design: Design; onCl
                       ))}
                     </tbody>
                   </table>
-                </>
+                </div>
               )}
 
-              <h3 style={{ marginTop: 22 }}>{t("detail.reasoning")}</h3>
-              <pre className="reasoning">{r.reasoning}</pre>
+              {r.ocr_text && (
+                <div>
+                  <h3>{t("detail.textInDesign")}</h3>
+                  <pre className="prose">{r.ocr_text}</pre>
+                </div>
+              )}
+
+              <div>
+                <h3>{t("detail.reasoning")}</h3>
+                <pre className="prose">{r.reasoning}</pre>
+              </div>
 
               {r.policy_notes.length > 0 && (
-                <>
-                  <h3 style={{ marginTop: 22 }}>{t("detail.policyNotes")}</h3>
-                  <ul className="muted" style={{ paddingLeft: 18, fontSize: 12.5 }}>
+                <div>
+                  <h3>{t("detail.policyNotes")}</h3>
+                  <ul className="muted" style={{ paddingLeft: 18, margin: 0 }}>
                     {r.policy_notes.map((n, i) => (
                       <li key={i}>{n}</li>
                     ))}
                   </ul>
-                </>
+                </div>
               )}
+
+              <div className="muted" style={{ fontSize: 13 }}>
+                {r.provider} · {(r.duration_ms / 1000).toFixed(1)}
+                {t("messages.duration")}
+              </div>
             </div>
           </div>
         )}

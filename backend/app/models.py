@@ -216,8 +216,13 @@ class ComplianceReport(BaseModel):
 
     image_width: int = 0
     image_height: int = 0
+    #: Small derivative served to the dashboard. Not the file the user uploaded —
+    #: see `original_url` for that.
     preview_url: str | None = None
     annotated_url: str | None = None
+    #: The untouched file the user gave us, streamed on demand. Full resolution
+    #: and potentially tens of MB, so the UI links to it rather than embedding it.
+    original_url: str | None = None
 
     duration_ms: int = 0
     provider: str = ""

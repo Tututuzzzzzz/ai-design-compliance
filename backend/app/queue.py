@@ -53,6 +53,9 @@ def _handle(task: Task) -> None:
             if not task.source_ref:
                 raise RuntimeError("No file and no URL to fetch")
             path, _ = fetcher.fetch(task.source_ref)
+            # Persist it: the row was created before the file existed, and the
+            # original-file endpoint reads this column.
+            db.set_design_path(task.design_id, str(path))
 
         report = run.analyze_design(
             design_id=task.design_id,
@@ -74,6 +77,9 @@ def _handle(task: Task) -> None:
             source_ref=task.source_ref,
             meta=task.meta,
             error=str(exc),
+            # Present only when the failure happened after the preview was
+            # written (see run.AnalysisFailed) — otherwise there is no image yet.
+            preview_path=getattr(exc, "preview_path", None),
         )
         db.save_report(task.design_id, report.model_dump(mode="json"))
         db.save_design_error(task.design_id, str(exc))

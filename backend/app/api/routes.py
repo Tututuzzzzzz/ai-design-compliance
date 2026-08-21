@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import mimetypes
 import uuid
 from pathlib import Path
 from typing import Any
@@ -319,8 +320,20 @@ async def get_designs(
     verdict: str | None = None,
     niche: str | None = None,
     category: str | None = None,
+    since: float | None = None,
+    until: float | None = None,
+    limit: int = Query(600, ge=1, le=5000),
 ):
-    return {"designs": db.list_designs(job_id, verdict, niche, category)}
+    """`since`/`until` are epoch seconds on the scan time.
+
+    `limit` is capped rather than optional: an unscoped call returns every
+    design ever analysed, reports included, and the dashboard only ever renders
+    the recent window. It applies newest-first, so a lower limit trims history
+    rather than hiding today's work.
+    """
+    return {
+        "designs": db.list_designs(job_id, verdict, niche, category, since, until, limit)
+    }
 
 
 @router.get("/designs/{design_id}")
@@ -331,14 +344,106 @@ async def get_design(design_id: str):
     return design
 
 
+# --------------------------------------------------------------------------
+# Exports
+#
+# Each format is exposed twice: once scoped to a job, and once unscoped for the
+# dashboard's cross-batch view. Both call the same builder — the only difference
+# is whether `job_id` narrows the query and what the file is named.
+# --------------------------------------------------------------------------
+
+
+def _export_rows(
+    job_id: str | None,
+    verdict: str | None,
+    category: str | None,
+    since: float | None,
+    until: float | None,
+) -> list[dict[str, Any]]:
+    return db.list_designs(job_id, verdict, None, category, since, until)
+
+
+def _attachment(stem: str, job_id: str | None, ext: str) -> dict[str, str]:
+    scope = job_id or "all"
+    return {"Content-Disposition": f'attachment; filename="{stem}-{scope}.{ext}"'}
+
+
+@router.get("/export.csv")
+async def export_all_csv(
+    job_id: str | None = None,
+    verdict: str | None = None,
+    category: str | None = None,
+    lang: str | None = None,
+    since: float | None = None,
+    until: float | None = None,
+):
+    designs = _export_rows(job_id, verdict, category, since, until)
+    return Response(
+        content=reports.to_csv(designs, i18n.normalize(lang)),
+        media_type="text/csv",
+        headers=_attachment("compliance", job_id, "csv"),
+    )
+
+
+@router.get("/export.xlsx")
+async def export_all_xlsx(
+    job_id: str | None = None,
+    verdict: str | None = None,
+    category: str | None = None,
+    lang: str | None = None,
+    since: float | None = None,
+    until: float | None = None,
+):
+    designs = _export_rows(job_id, verdict, category, since, until)
+    # Unscoped, the summary sheet counts the rows in the file rather than a
+    # single job's tallies — a cross-batch export has no one job to report.
+    stats = db.job_stats(job_id) if job_id else _stats_of(designs)
+    return Response(
+        content=reports.to_xlsx(designs, stats, i18n.normalize(lang)),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=_attachment("compliance", job_id, "xlsx"),
+    )
+
+
+@router.get("/export.sheet.xlsx")
+def export_all_sheet_xlsx(
+    job_id: str | None = None,
+    verdict: str | None = None,
+    category: str | None = None,
+    lang: str | None = None,
+    since: float | None = None,
+    until: float | None = None,
+):
+    """See `export_sheet_xlsx` — sync for the same reason."""
+    designs = _export_rows(job_id, verdict, category, since, until)
+    return Response(
+        content=reports.to_sheet_xlsx(designs, i18n.normalize(lang)),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=_attachment("review", job_id, "xlsx"),
+    )
+
+
+def _stats_of(designs: list[dict[str, Any]]) -> dict[str, int]:
+    out = {"SAFE": 0, "RISKY": 0, "BLOCKED": 0, "FAILED": 0}
+    for d in designs:
+        key = d.get("verdict")
+        if key in out:
+            out[key] += 1
+        elif d.get("status") == "failed":
+            out["FAILED"] += 1
+    return out
+
+
 @router.get("/jobs/{job_id}/export.csv")
 async def export_csv(
     job_id: str,
     verdict: str | None = None,
     category: str | None = None,
     lang: str | None = None,
+    since: float | None = None,
+    until: float | None = None,
 ):
-    designs = db.list_designs(job_id, verdict, None, category)
+    designs = db.list_designs(job_id, verdict, None, category, since, until)
     return Response(
         content=reports.to_csv(designs, i18n.normalize(lang)),
         media_type="text/csv",
@@ -352,12 +457,39 @@ async def export_xlsx(
     verdict: str | None = None,
     category: str | None = None,
     lang: str | None = None,
+    since: float | None = None,
+    until: float | None = None,
 ):
-    designs = db.list_designs(job_id, verdict, None, category)
+    designs = db.list_designs(job_id, verdict, None, category, since, until)
     return Response(
         content=reports.to_xlsx(designs, db.job_stats(job_id), i18n.normalize(lang)),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="compliance-{job_id}.xlsx"'},
+    )
+
+
+@router.get("/jobs/{job_id}/export.sheet.xlsx")
+def export_sheet_xlsx(
+    job_id: str,
+    verdict: str | None = None,
+    category: str | None = None,
+    lang: str | None = None,
+    since: float | None = None,
+    until: float | None = None,
+):
+    """Review-sheet layout: one row per design with the artwork in the cell.
+
+    Sync `def`, unlike its siblings: this one reads every preview off disk and
+    re-encodes a thumbnail per design, so on a 500-design batch it would hold
+    the event loop for seconds. FastAPI runs sync handlers in a threadpool.
+    """
+    designs = db.list_designs(job_id, verdict, None, category, since, until)
+    return Response(
+        content=reports.to_sheet_xlsx(designs, i18n.normalize(lang)),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": f'attachment; filename="review-{job_id}.xlsx"'
+        },
     )
 
 
@@ -368,6 +500,54 @@ async def get_file(name: str):
     if not path.exists():
         raise HTTPException(404, "File not found")
     return FileResponse(path, media_type="image/png")
+
+
+#: Types a browser will render inline. Anything else (PSD, AI, EPS, and PDF in
+#: some browsers) is sent as a download rather than shown as garbage.
+_INLINE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif", "image/bmp"}
+
+
+@router.get("/designs/{design_id}/original")
+def get_original(design_id: str):
+    """Stream the file the user actually supplied.
+
+    The vision render is deleted once analysis finishes and the preview is a
+    downscaled derivative, so this is the only route to the full-resolution
+    artwork. Sync `def` on purpose: FileResponse reads from disk, and a
+    multi-megabyte original would block the event loop in an async handler.
+    """
+    design = db.get_design(design_id)
+    if not design:
+        raise HTTPException(404, "Design not found")
+
+    raw = design.get("path")
+    if not raw:
+        raise HTTPException(
+            404,
+            "Original file was never stored for this design — it predates "
+            "original-file retention, or the fetch failed before writing it.",
+        )
+
+    path = Path(raw)
+    # Defence in depth: the column is written by us, but never serve anything
+    # that does not resolve inside the uploads dir.
+    try:
+        path.resolve().relative_to(settings.uploads_dir.resolve())
+    except ValueError:
+        log.warning("Refusing original outside uploads dir for %s: %s", design_id, raw)
+        raise HTTPException(404, "File not found") from None
+
+    if not path.exists():
+        raise HTTPException(404, "Original file is no longer on disk")
+
+    media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    disposition = "inline" if media_type in _INLINE_TYPES else "attachment"
+    filename = design.get("filename") or path.name
+    return FileResponse(
+        path,
+        media_type=media_type,
+        headers={"Content-Disposition": f'{disposition}; filename="{filename}"'},
+    )
 
 
 # --------------------------------------------------------------------------
