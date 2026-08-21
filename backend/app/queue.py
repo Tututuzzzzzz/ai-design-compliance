@@ -74,6 +74,7 @@ def _handle(task: Task) -> None:
             source_ref=task.source_ref,
             meta=task.meta,
             error=str(exc),
+            render_path=getattr(exc, "render_path", None),
         )
         db.save_report(task.design_id, report.model_dump(mode="json"))
         db.save_design_error(task.design_id, str(exc))

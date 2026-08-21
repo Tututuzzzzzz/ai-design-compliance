@@ -112,7 +112,10 @@ export interface Health {
   status: string;
   vision: { provider: string; model: string; configured: boolean };
   ocr: { engine: string };
-  trademark: { available: boolean; marks: number; live_lookup: boolean };
+  trademark: {
+    live_lookup: boolean;
+    registers: { uspto_public: boolean; uspto_live: boolean; euipo: boolean };
+  };
   queue: { pending: number; workers: number };
   formats: string[];
   platforms: string[];

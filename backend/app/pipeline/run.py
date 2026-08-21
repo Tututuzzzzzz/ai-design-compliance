@@ -21,6 +21,19 @@ from . import annotate, i18n, loader, ocr, rules, trademark, verdict, vision
 log = logging.getLogger(__name__)
 
 
+class AnalysisFailed(RuntimeError):
+    """A pipeline failure that happened *after* the render existed.
+
+    Carries the render so the UI can still show the design next to the error —
+    a failed row with no image looks like the upload itself was lost.
+    """
+
+    def __init__(self, cause: Exception, render_path: Path | None = None) -> None:
+        super().__init__(str(cause))
+        self.cause = cause
+        self.render_path = render_path
+
+
 def analyze_design(
     design_id: str,
     path: Path,
@@ -30,14 +43,36 @@ def analyze_design(
     meta: DesignMetadata,
 ) -> ComplianceReport:
     started = time.perf_counter()
-    lang = i18n.normalize(meta.language)
 
     # 1. Normalise any supported format into a flat PNG.
-    render_path, width, height = loader.prepare(path)
+    render = loader.prepare(path)
+
+    try:
+        return _analyze_rendered(
+            design_id, render, filename, source, source_ref, meta, started
+        )
+    except Exception as exc:
+        # Attach the render so the caller can still show the design with the error.
+        raise AnalysisFailed(exc, render.display_path) from exc
+
+
+def _analyze_rendered(
+    design_id: str,
+    render: loader.Render,
+    filename: str,
+    source: str,
+    source_ref: str | None,
+    meta: DesignMetadata,
+    started: float,
+) -> ComplianceReport:
+    lang = i18n.normalize(meta.language)
+    render_path = render.path
 
     # 2. Local OCR first — its boxes are pixel-accurate where the model's are
     #    estimates. If the engine is not installed we use the model's OCR instead.
-    ocr_lines = ocr.extract(render_path, width, height)
+    #    Normalise against the RENDER size: OCR reads the rendered PNG, so dividing
+    #    by the source size would scale every box by the crop-and-resize ratio.
+    ocr_lines = ocr.extract(render_path, render.render_width, render.render_height)
     used_local_ocr = bool(ocr_lines)
 
     # 3. Vision analysis: niche + risk findings (+ OCR when local OCR is absent).
@@ -72,13 +107,11 @@ def analyze_design(
     #     cap is applied AFTER policy so escalation can never push an unverified
     #     claim up to a blocking severity. Evidence quality bounds consequence.
     findings = verdict.cap_unverified_phrases(findings, lang)
-    if not trademark.index_available():
-        policy_notes.append(i18n.t("note.no_local_index", lang))
 
     # 6. Decide.
     final_verdict, confidence, reasoning = verdict.decide(findings, lang)
 
-    annotated = annotate.render(render_path, findings)
+    annotated = annotate.render(render.display_path, findings)
 
     return ComplianceReport(
         design_id=design_id,
@@ -95,9 +128,9 @@ def analyze_design(
         ocr_text="\n".join(line.text for line in ocr_lines),
         trademark_hits=[h.as_dict() for h in hits],
         policy_notes=policy_notes,
-        image_width=width,
-        image_height=height,
-        preview_url=f"/api/files/{render_path.name}",
+        image_width=render.width,
+        image_height=render.height,
+        preview_url=f"/api/files/{render.display_path.name}",
         annotated_url=f"/api/files/{annotated.name}" if annotated else None,
         duration_ms=int((time.perf_counter() - started) * 1000),
         provider=f"{provider} + {'rapidocr' if used_local_ocr else 'vision-ocr'}",
@@ -142,7 +175,14 @@ def _tm_candidates(ocr_lines: list[OCRLine], findings: list[Finding]) -> list[st
         out.append(text)
 
         words = [w for w in re.split(r"\s+", trademark.normalize(text)) if w]
-        for n in (4, 3, 2):
+        # 3 words minimum. A two-word window is too small a unit to carry brand
+        # meaning out of context, and a complete register holds a live mark for
+        # very nearly every pair of common words — checking 2-grams against one
+        # turns "JUST DON'T DO IT." into registered hits for "JUST DON",
+        # "DON T", "T DO" and "DO IT", each an exact match to somebody, none of
+        # them what the shirt says. A genuinely two-word mark ("GOT MILK") is
+        # the whole line on a shirt, and the whole line is already a candidate.
+        for n in (4, 3):
             if len(words) <= n:
                 continue
             for i in range(len(words) - n + 1):
@@ -159,11 +199,13 @@ def failed_report(
     source_ref: str | None,
     meta: DesignMetadata,
     error: str,
+    render_path: Path | None = None,
 ) -> ComplianceReport:
     from ..models import Niche  # local import to avoid a cycle at module load
 
     lang = i18n.normalize(meta.language)
     return ComplianceReport(
+        preview_url=f"/api/files/{render_path.name}" if render_path else None,
         design_id=design_id,
         filename=filename,
         source=source,

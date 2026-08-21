@@ -39,6 +39,12 @@ def merge_trademark_hits(
         for hit in matched:
             remaining.remove(hit)
             f.evidence.append(_hit_evidence(hit, lang))
+            # A registration for unrelated goods still belongs in the report, but
+            # it must not raise severity, raise confidence, or lend its owner's
+            # name to this design — that is how a class-012 vehicle mark ended up
+            # named as the rights holder of a t-shirt slogan.
+            if hit.covers_goods is False:
+                continue
             if hit.similarity >= TM_BLOCK_SIMILARITY and rank(f.severity) < rank(Severity.HIGH):
                 f.severity = Severity.HIGH
             f.confidence = max(f.confidence, min(0.99, hit.similarity / 100))
@@ -48,9 +54,17 @@ def merge_trademark_hits(
     for hit in remaining:
         if hit.similarity < TM_RISK_SIMILARITY:
             continue
-        severity = (
-            Severity.HIGH if hit.similarity >= TM_BLOCK_SIMILARITY else Severity.MEDIUM
-        )
+        off_class = hit.covers_goods is False
+        if off_class:
+            # LOW keeps it visible without blocking, and the capped confidence is
+            # the load-bearing half: decide() only blocks on findings at or above
+            # BLOCK_MIN_CONFIDENCE, so platform escalation cannot push an
+            # unrelated-goods match up to BLOCKED on its own.
+            severity = Severity.LOW
+        elif hit.similarity >= TM_BLOCK_SIMILARITY:
+            severity = Severity.HIGH
+        else:
+            severity = Severity.MEDIUM
         findings.append(
             Finding(
                 category=RiskCategory.TRADEMARKED_PHRASE,
@@ -63,10 +77,15 @@ def merge_trademark_hits(
                     similarity=hit.similarity,
                     owner=t("tm.owner_suffix", lang, owner=hit.owner) if hit.owner else "",
                     status=t("tm.status_suffix", lang, status=hit.status) if hit.status else "",
-                ),
+                )
+                + (t("tm.off_class", lang, classes=hit.classes) if off_class else ""),
                 severity=severity,
-                confidence=min(0.99, hit.similarity / 100),
-                rights_holder=hit.owner,
+                confidence=(
+                    min(0.5, hit.similarity / 100)
+                    if off_class
+                    else min(0.99, hit.similarity / 100)
+                ),
+                rights_holder=None if off_class else hit.owner,
                 matched_text=hit.query,
                 location_hint=t("tm.location_hint", lang),
                 evidence=[_hit_evidence(hit, lang)],
@@ -77,6 +96,28 @@ def merge_trademark_hits(
     return findings
 
 
+def _register_backed(findings: list[Finding]) -> bool:
+    """Whether any finding cites a register hit that actually reaches these goods.
+
+    An off-class hit is real register data, so it keeps its source label — but it
+    confirms a registration for something else, and must not be read as
+    confirmation about this design.
+    """
+    return any(
+        e.source in _REGISTER_SOURCES and e.covers_goods is not False
+        for f in findings
+        for e in f.evidence
+    )
+
+
+#: Register sources that can confirm a phrase really is registered.
+_REGISTER_SOURCES = {
+    "uspto_live_api",
+    "uspto_tmsearch",
+    "euipo_api",
+}
+
+
 def _hit_evidence(hit: TrademarkHit, lang: Lang = DEFAULT_LANG) -> Evidence:
     bits = [t("hit.match", lang, mark=hit.mark_text, similarity=hit.similarity)]
     if hit.status:
@@ -85,16 +126,20 @@ def _hit_evidence(hit: TrademarkHit, lang: Lang = DEFAULT_LANG) -> Evidence:
         bits.append(t("hit.owner", lang, owner=hit.owner))
     if hit.classes:
         bits.append(t("hit.classes", lang, classes=hit.classes))
+    if hit.covers_goods is False:
+        bits.append(t("hit.off_class", lang))
+    # Stamp the register the hit actually came from. A two-branch if/else here
+    # would relabel an EUIPO hit as USPTO — exactly the kind of invented
+    # provenance the evidence rules exist to prevent. Unknown sources fall back
+    # to the live-API label rather than guessing a specific register.
+    source = hit.source if hit.source in _REGISTER_SOURCES else "uspto_live_api"
     return Evidence(
-        source="uspto_local_index" if hit.source == "uspto_local_index" else "uspto_live_api",
+        source=source,
         detail="; ".join(bits),
         url=hit.url,
+        covers_goods=hit.covers_goods,
         reference_id=hit.registration_number or hit.serial_number,
     )
-
-
-#: Register sources that can confirm a phrase really is registered.
-_REGISTER_SOURCES = {"uspto_local_index", "uspto_live_api", "euipo_api"}
 
 
 def cap_unverified_phrases(
@@ -120,7 +165,10 @@ def cap_unverified_phrases(
     for f in findings:
         if f.category is not RiskCategory.TRADEMARKED_PHRASE:
             continue
-        if any(e.source in _REGISTER_SOURCES for e in f.evidence):
+        if any(
+            e.source in _REGISTER_SOURCES and e.covers_goods is not False
+            for e in f.evidence
+        ):
             continue
         if (f.rights_holder or "").strip():
             continue
@@ -232,11 +280,7 @@ def _confidence(verdict: Verdict, findings: list[Finding], top: Finding) -> int:
     score = base + int(top.confidence * 18)
 
     # Register-backed evidence is objective; it earns a real bump.
-    if any(
-        e.source in ("uspto_local_index", "uspto_live_api", "euipo_api")
-        for f in findings
-        for e in f.evidence
-    ):
+    if _register_backed(findings):
         score += 8
 
     # Agreement between several findings raises confidence in the call.

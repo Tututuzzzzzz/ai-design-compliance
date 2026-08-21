@@ -55,13 +55,13 @@
   "errors": {
     "error": "Lỗi"
   },
-  "header": {
-    "title": "AI Design Compliance Agent",
-    "tagline": "Phát hiện niche · rà soát trademark & bản quyền · SAFE / RISKY / BLOCKED"
-  },
   "nav": {
-    "new": "Phân tích mới",
-    "batches": "Lô xử lý"
+    "dashboard": "Bảng điều khiển",
+    "import": "Nhập design",
+    "history": "Lịch sử batch",
+    "watchlist": "Watchlist",
+    "settings": "Cài đặt",
+    "soon": "sắp có"
   },
   "meta": {
     "targetMarkets": "Thị trường mục tiêu",
@@ -75,12 +75,13 @@
     "ocr": "OCR",
     "ocrRapid": "RapidOCR (cục bộ)",
     "ocrVisionFallback": "OCR từ mô hình Vision (dự phòng)",
-    "trademarkIndex": "Chỉ mục trademark",
     "workers": "Worker",
-    "marks": "nhãn hiệu",
-    "notBuilt": "chưa xây dựng",
     "noApiKey": "Chưa thiết lập API key cho nhà cung cấp này",
-    "trademarkHint": "Chạy `python -m data.build_uspto_index --daily 10` để bật đối sánh ngoại tuyến"
+    "systemStatus": "Trạng thái hệ thống",
+    "visionShort": "Vision",
+    "registerShort": "Đăng bạ",
+    "noRegister": "không có",
+    "noRegisterHint": "Chưa bật đăng bạ nhãn hiệu nào — đặt USPTO_TMSEARCH_LOOKUP=true"
   },
   "job": {
     "batch": "Lô",
@@ -144,7 +145,8 @@
     "uspto_local_index": "Chỉ mục USPTO cục bộ",
     "uspto_live_api": "API USPTO trực tuyến",
     "euipo_api": "API EUIPO",
-    "policy_rule": "Luật chính sách"
+    "policy_rule": "Luật chính sách",
+    "uspto_tmsearch": "Tra cứu công khai USPTO"
   },
   "status": {
     "queued": "đang xếp hàng",

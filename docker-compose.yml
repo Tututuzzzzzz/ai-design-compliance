@@ -10,7 +10,6 @@ services:
     environment:
       DATA_DIR: /srv/var
       DB_PATH: /srv/var/compliance.db
-      USPTO_DB_PATH: /srv/var/uspto.db
     volumes:
       - ./backend/var:/srv/var
     ports:

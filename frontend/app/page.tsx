@@ -2,7 +2,6 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import HealthBar from "@/components/HealthBar";
 import MetadataPicker from "@/components/MetadataPicker";
 import { api, type Metadata } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
@@ -64,8 +63,6 @@ export default function Home() {
 
   return (
     <main className="shell">
-      <HealthBar />
-
       <div className="card">
         <div className="tabs">
           {TABS.map((t) => (

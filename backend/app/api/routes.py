@@ -398,8 +398,14 @@ async def health() -> dict[str, Any]:
         },
         "ocr": {"engine": "rapidocr" if ocr.available() else "vision-model-fallback"},
         "trademark": {
-            **trademark.index_stats(),
             "live_lookup": settings.uspto_live_lookup,
+            # Which live registers are actually usable, so a missing credential
+            # shows up on the status bar instead of looking like a clean miss.
+            "registers": {
+                "uspto_public": trademark.tmsearch_configured(),
+                "uspto_live": bool(settings.uspto_live_lookup and settings.uspto_api_key),
+                "euipo": trademark.euipo_configured(),
+            },
         },
         "queue": {"pending": queue.pending(), "workers": settings.worker_concurrency},
         "formats": sorted(loader.SUPPORTED_EXT),

@@ -28,11 +28,18 @@ def _font(size: int) -> ImageFont.ImageFont:
 
 
 def render(render_path: Path, findings: list[Finding]) -> Path | None:
+    """Draw the boxes on `render_path`, keeping its transparency.
+
+    It is handed the DISPLAY render, so it must not flatten: the annotated view is
+    still a preview of the uploaded design, and converting straight to RGB would
+    silently paint transparent areas whatever the file happens to store in its
+    unused colour channels.
+    """
     boxed = [f for f in findings if f.bbox is not None]
     if not boxed:
         return None
 
-    img = Image.open(render_path).convert("RGB")
+    img = Image.open(render_path).convert("RGBA")
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
 
@@ -56,5 +63,5 @@ def render(render_path: Path, findings: list[Finding]) -> Path | None:
         draw.text((x + 5, ly + 3), label, fill=(255, 255, 255), font=font)
 
     out = settings.renders_dir / f"annot_{uuid.uuid4().hex}.png"
-    Image.alpha_composite(img.convert("RGBA"), overlay).convert("RGB").save(out, "PNG")
+    Image.alpha_composite(img, overlay).save(out, "PNG")
     return out

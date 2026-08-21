@@ -25,8 +25,8 @@ Mở **http://localhost:3000**. API docs ở **http://localhost:8000/docs**.
 | Gemini | `GOOGLE_API_KEY` + `VISION_PROVIDER=gemini` | https://aistudio.google.com/apikey |
 | Ollama (offline) | `VISION_PROVIDER=ollama`, `ollama pull llama3.2-vision` | không cần key |
 
-Thanh trạng thái trên UI hiển thị provider nào đang chạy, OCR engine nào, index trademark có
-bao nhiêu mark — nếu cấu hình sai bạn thấy ngay chứ không phải đoán.
+Thanh trạng thái trên UI hiển thị provider nào đang chạy, OCR engine nào, và những register
+nhãn hiệu nào đang trả lời được — nếu cấu hình sai bạn thấy ngay chứ không phải đoán.
 
 **Tên model thay đổi theo thời gian và theo từng key.** Nếu gặp lỗi 404 model, liệt kê những
 model key của bạn thực sự gọi được:
@@ -43,26 +43,58 @@ dự phòng: agent retry với backoff, hết retry thì chuyển model kế ti�
 (sai key, sai tên model) thì bỏ qua ngay. Không có nó, một lúc provider quá tải sẽ biến design
 sạch thành dòng RISKY "analysis failed".
 
-### Bật index trademark offline (khuyến nghị)
+### Register nhãn hiệu US — không cần key, không cần tải gì
 
-Không bắt buộc để chạy, nhưng đây là nguồn đối chiếu chính. USPTO đã ngừng
-`bulkdata.uspto.gov`; giờ tải file zip từ portal mới:
+Mặc định agent tra **register USPTO hiện hành** qua endpoint công khai mà chính trang
+`tmsearch.uspto.gov` dùng. Không API key, không bulk download, không bước setup nào:
 
-1. Vào https://data.uspto.gov/bulkdata/datasets/trademark, tải một file
-   "Trademark applications XML" (file daily nhỏ để thử, file annual là toàn bộ register).
-2. Nạp vào index:
-
-```bash
-docker compose cp ~/Downloads/apc250801.zip api:/tmp/tm.zip
-docker compose exec api python -m data.build_uspto_index --zip /tmp/tm.zip
+```
+POST https://tmsearch.uspto.gov/prod-stage-v1-0-0/tmsearch
 ```
 
-Cách thứ hai — resolve một danh sách nhãn hiệu qua API live (cần `USPTO_API_KEY` miễn phí từ
-https://data.uspto.gov/apis/getting-started):
+Nó cũng trả **Nice class**, và đó là lý do nó là nguồn US chính: một nhãn hiệu đã đăng ký cho
+nhóm hàng khác được báo là *đầu mối cần kiểm tra* chứ không chặn listing. Không có class thì
+mọi từ điển-từ nào có người đăng ký đều thành một finding chặn hàng — `SUPREME` của Ford
+(nhóm 012, xe hơi) từng bị gán làm chủ quyền của một cái áo thun.
+
+Tắt bằng `USPTO_TMSEARCH_LOOKUP=false`. Đây là interface công khai nhưng **không phải contract
+có tài liệu**: nếu USPTO ngừng nhận traffic thì agent báo ít hit hơn và ghi rõ trong report,
+chứ không treo.
+
+`USPTO_API_KEY` (ODP, miễn phí tại https://data.uspto.gov/apis/getting-started) là **tuỳ
+chọn** — nó chạy như fallback phía sau và không trả class.
+
+> **Không còn index bulk cục bộ.** Snapshot chỉ đúng tới ngày build nó, và một snapshot cũ tệ
+> hơn là không có: bản dump 2010 trả `ROXY` ở nhóm 036 của "Quiksilver, Inc" trong khi register
+> hiện hành có đúng nhãn đó ở nhóm 025 dưới tên Boardriders — và vì snapshot được tra trước,
+> nó *che* mất câu trả lời đúng thay vì bổ sung.
+
+### Bật register EU (EUIPO)
+
+USPTO không có thẩm quyền với thị trường EU. Nếu design của bạn bán ở EU, thêm credential
+EUIPO — **miễn phí**, lấy trong khoảng 2 phút:
+
+1. Đăng ký ở https://dev.euipo.europa.eu
+2. Tạo một app, subscribe app đó vào **Trademark Search API**
+3. Điền vào `.env`:
 
 ```bash
-docker compose exec api python -m data.build_uspto_index --resolve data/watchlist.txt
+EUIPO_CLIENT_ID=...        # trong UI của EUIPO hiển thị là "API Key"
+EUIPO_CLIENT_SECRET=...
 ```
+
+Không có credential thì check EU bị bỏ qua và `/api/health` báo `registers.euipo: false` —
+không im lặng coi như đã kiểm tra.
+
+Register chỉ được gọi theo đúng thị trường của design: `US` → USPTO, `EU` → EUIPO. Gọi cả hai
+cho mọi design chỉ tiêu quota để lấy bằng chứng không áp dụng được cho nơi design đang bán.
+**`UK` cố ý không dùng EUIPO** — sau Brexit nhãn hiệu UK tách khỏi register EU, nên một hit
+EUIPO không phải thẩm quyền cho listing bán ở UK; việc đó cần UKIPO, hiện chưa nối.
+
+> **JPO thì sao?** Đã kiểm tra và **không khả thi**: API trademark của JPO đòi key item khớp
+> *tuyệt đối* (kể cả khoảng trắng, hoa/thường) nên không dùng được cho text OCR, phải đăng ký
+> bằng form và chờ cấp credential khoảng một tuần, và vẫn đang ở giai đoạn trial có giới hạn
+> truy cập. Market `JP` vì vậy chỉ có policy layer, không có register.
 
 ---
 
@@ -166,7 +198,7 @@ model có bằng chứng, và chạy lại được với design thật.
         │ 2. ocr        RapidOCR (offline, có bbox)               │
         │ 3. vision     Claude / Gemini / Ollama → JSON schema    │
         │               niche + findings + bbox                   │
-        │ 4. trademark  USPTO local FTS5 index + live register    │
+        │ 4. trademark  USPTO FTS5 index + live USPTO / EUIPO     │
         │ 5. rules      policy Etsy/Amazon/TikTok × US/EU/UK/JP   │
         │ 6. verdict    rule engine (deterministic) → verdict     │
         │ 7. annotate   vẽ bounding box lên ảnh                   │
@@ -184,10 +216,39 @@ nên cùng một bằng chứng luôn ra cùng một verdict, và phần reasoni
 kích hoạt, không phải văn của model.
 
 **Không bao giờ fabricate dữ liệu trademark.** Prompt cấm model bịa số đăng ký. Mọi số serial,
-chủ sở hữu, trạng thái đều đến từ index USPTO thật (bulk XML chính thức) hoặc register live,
-và mỗi finding mang theo `evidence[]` ghi rõ nguồn + link TSDR để kiểm chứng.
-[`watchlist.txt`](backend/data/watchlist.txt) chỉ chứa **câu truy vấn**, không chứa dữ liệu
-nhãn hiệu — dòng nào register không trả kết quả thì bị loại, không vào index.
+chủ sở hữu, trạng thái đều đến từ register thật đang chạy, và mỗi finding mang theo
+`evidence[]` ghi rõ nguồn + link TSDR để kiểm chứng. `evidence[].covers_goods` nói thẳng
+register đó có thẩm quyền với loại hàng này hay không, nên một hit lệch nhóm không bao giờ
+lặng lẽ biến thành lý do chặn.
+
+**Nền flatten chọn theo mực in, không mặc định trắng.** Design POD được cấp ở dạng trong
+suốt để in lên áo màu nào cũng được, và phần rất lớn dùng **mực trắng** cho áo tối. Ghép ảnh
+đó lên nền trắng là xoá sạch thiết kế — model nhìn thấy canvas trắng và trả SAFE, đúng kiểu
+thất bại tệ nhất mà công cụ này có thể mắc.
+
+[`loader.py`](backend/app/pipeline/loader.py) vì vậy đo *nền nào sẽ xoá mất bao nhiêu phần
+artwork* rồi chọn nền tránh cả hai phía: nhiều mực trắng → nền tối, nhiều mực đậm → nền trắng,
+có cả hai → xám trung tính. Cách hỏi cũ ("có phần nào đủ tối để đọc trên trắng?", dùng
+percentile 5) sai đúng ở loại design phổ biến nhất: một wordmark 75% chữ trắng kèm icon màu
+vẫn "đạt" test, rồi mất toàn bộ phần chữ. Đo trên 60 design thật: **30% bị nền trắng xoá gần
+hết nội dung**, 25% mất phần mực trắng. Một trong số đó là logo golf `BOGEY BROS GOLF CO` —
+trước: OCR đọc được `'3 GOLF co'` → SAFE 88%; sau: `'BOGEYABROS GOLFCO'` → BLOCKED 96% kèm
+bounding box và tên chủ sở hữu.
+
+**Autocrop có code, nhưng mặc định TẮT — vì đo ra không có lợi.** Design POD là canvas cỡ
+in với artwork nằm ở một góc; logo golf gây ra thí nghiệm này chiếm **1.6%** của file
+4200×4800, nên sau khi giới hạn `RENDER_MAX_EDGE` nó co theo tỉ lệ canvas chứ không theo tỉ lệ
+của chính nó. Crop về vùng artwork đưa chữ **to hơn ~3.3 lần** — nghe như thắng chắc.
+
+Đo thì không. [`data/ab_crop.py`](backend/data/ab_crop.py) chạy 4 design × 3 lần × 2 chế độ:
+**6/12 phát hiện khi tắt, 5/12 khi bật**. Ba design được lợi nhẹ, nhưng design chỉ-có-logo tụt
+từ **6/6 xuống 0/6** — model gọi bản crop sát là "original work on a generic subject". Một logo
+lấp kín khung đọc như *logo asset*; cùng logo đó trên canvas in đọc như *design đang được bán*.
+Mất khung ngữ cảnh đắt hơn phần nét thu được, và nó hỏng đúng ở loại case mà brand logo là vi
+phạm duy nhất.
+
+Nên `AUTOCROP_TRANSPARENT=false` là mặc định, code vẫn ở đó cho catalogue artwork siêu nhỏ trên
+canvas siêu lớn — kèm script để đo trước khi tin.
 
 **Fail → RISKY, không phải SAFE.** Design phân tích lỗi (link chết, format hỏng, API timeout)
 được báo RISKY kèm lý do. Không bao giờ có chuyện một check thất bại lại được đọc là "an toàn
@@ -278,8 +339,8 @@ Filter đang chọn được áp vào file export.
 | Nhóm | Ví dụ | Nguồn đối chiếu |
 |---|---|---|
 | Nhân vật có bản quyền | Mickey Mouse, Pikachu, Batman, anime | vision model |
-| Logo / brand | Nike swoosh, Apple, LV monogram, logo đội thể thao | vision model + USPTO |
-| Câu chữ đã đăng ký | "Just Do It", "I ❤ NY" | **USPTO register** (exact + fuzzy) |
+| Logo / brand | Nike swoosh, Apple, LV monogram, logo đội thể thao | vision model + USPTO / EUIPO |
+| Câu chữ đã đăng ký | "Just Do It", "I ❤ NY" | **USPTO + EUIPO register** (exact + fuzzy) |
 | Người nổi tiếng | khuôn mặt / tên celebrity, VĐV, chính trị gia | vision model |
 | Tác phẩm có bản quyền | ảnh Disney/Marvel/Pixar, tranh còn bản quyền | vision model |
 | Font thương mại | font cần license bị dùng free | vision model (đánh dấu cần review tay) |
@@ -308,11 +369,16 @@ cd frontend && npm install && npm run dev
 ### Kiểm tra pipeline không cần API key
 
 ```bash
-cd backend && python -m data.smoke_test
+cd backend && python -m data.smoke_test      # pipeline end-to-end, vision giả lập
+cd backend && python -m data.test_registers  # tầng register: USPTO + EUIPO, HTTP giả lập
 ```
 
-Chạy toàn bộ pipeline với vision provider giả lập — kiểm tra verdict engine, policy layer,
-annotation và export. Không cần key, không cần mạng.
+`smoke_test` chạy toàn bộ pipeline với vision provider giả lập — kiểm tra verdict engine, policy
+layer, annotation và export.
+
+`test_registers` kiểm tra riêng tầng tra cứu register: cách dựng RSQL, parse response, lọc mark
+đã chết, cache/huỷ token OAuth, gating theo thị trường, budget riêng cho từng register, và
+**nguồn bằng chứng được đóng dấu đúng register**. Cả hai đều không cần key, không cần mạng.
 
 ---
 
@@ -325,7 +391,8 @@ annotation và export. Không cần key, không cần mạng.
 | `WORKER_CONCURRENCY` | `4` | số design xử lý song song |
 | `MAX_UPLOAD_MB` | `60` | giới hạn mỗi file |
 | `RENDER_MAX_EDGE` | `1600` | cạnh dài ảnh gửi lên model (px) |
-| `USPTO_LIVE_LOOKUP` | `true` | tra register live khi index cục bộ không khớp |
+| `USPTO_TMSEARCH_LOOKUP` | `true` | register US công khai, không cần key — nguồn chính |
+| `USPTO_LIVE_LOOKUP` | `true` | ODP có key, fallback phía sau (không trả class) |
 
 ---
 
@@ -337,10 +404,13 @@ annotation và export. Không cần key, không cần mạng.
   0–1000, model khác trả pixel. [`BBox.rescale()`](backend/app/models.py) tự nhận diện và quy
   về 0..1 theo đúng kích thước ảnh model đã nhìn; box không cứu được thì bị bỏ, finding vẫn
   giữ `location_hint`. Một box hỏng không được phép làm hỏng cả phân tích.
-- **Live USPTO API cần key.** ODP (`api.uspto.gov`) trả 401 nếu thiếu `USPTO_API_KEY`; khi đó
-  agent tự ngắt sau vài lỗi liên tiếp (circuit breaker) và ghi rõ trong `policy_notes` rằng
-  chỉ index cục bộ được dùng — chứ không treo. Đường offline (`--zip`) không cần key.
-- **EUIPO chưa nối.** Thị trường EU hiện được xử lý bằng policy layer (nâng severity, bỏ
-  parody defence), chưa tra register EUIPO trực tiếp.
+- **Register US không cần key nữa.** Endpoint công khai của `tmsearch.uspto.gov` là nguồn
+  chính; ODP có key (`api.uspto.gov`) chỉ là fallback phía sau và trả 401 nếu thiếu
+  `USPTO_API_KEY`. Mỗi register có ngân sách lỗi riêng: một register chết không tiêu quota của
+  register khác, và agent báo ít hit hơn chứ không treo.
+- **Cụm từ chỉ được tra 12 lượt live mỗi design** (`MAX_LIVE_LOOKUPS`). Design nhiều chữ sẽ
+  không được tra hết mọi cụm.
+- **Nhãn hiệu >4 từ nằm trong một dòng dài hơn thì không bắt được.** Candidate chỉ tới 4-gram
+  cộng cả dòng, nên một slogan 6 từ lọt giữa câu khác sẽ trượt.
 - **Drive folder cần API key.** Google không có endpoint list folder ẩn danh.
 - Đây là công cụ hỗ trợ sàng lọc, **không phải tư vấn pháp lý**.

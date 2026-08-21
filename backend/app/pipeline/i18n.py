@@ -248,6 +248,20 @@ _T: dict[str, dict[Lang, str]] = {
         "en": ", status {status}",
         "vi": ", trạng thái {status}",
     },
+    "tm.off_class": {
+        "en": (
+            " — NOTE: this registration covers class {classes}, which does not include "
+            "the printed goods this design is sold on, so on its own it is a lead to "
+            "check rather than an infringement. A famous mark can still reach across "
+            "classes; an ordinary one usually cannot."
+        ),
+        "vi": (
+            " — LƯU Ý: đăng ký này thuộc nhóm {classes}, không bao gồm loại hàng in mà "
+            "thiết kế này được bán trên đó, nên bản thân nó chỉ là đầu mối cần kiểm tra "
+            "chứ chưa phải vi phạm. Nhãn hiệu nổi tiếng vẫn có thể vươn sang nhóm khác, "
+            "nhãn hiệu thông thường thì hầu như không."
+        ),
+    },
     "tm.location_hint": {
         "en": "see OCR text region",
         "vi": "xem vùng văn bản OCR",
@@ -272,6 +286,10 @@ _T: dict[str, dict[Lang, str]] = {
     "hit.status": {"en": "status {status}", "vi": "trạng thái {status}"},
     "hit.owner": {"en": "owner {owner}", "vi": "chủ sở hữu {owner}"},
     "hit.classes": {"en": "class {classes}", "vi": "nhóm {classes}"},
+    "hit.off_class": {
+        "en": "classes do not cover print-on-demand goods — evidence only",
+        "vi": "nhóm hàng hóa không bao gồm hàng in theo yêu cầu — chỉ là bằng chứng tham khảo",
+    },
     # --- verdict.cap_unverified_phrases ---------------------------------
     "cap.note": {
         "en": (
@@ -302,17 +320,6 @@ _T: dict[str, dict[Lang, str]] = {
     "evidence.vision": {
         "en": "Identified by {provider} from the artwork itself.",
         "vi": "Được {provider} nhận diện trực tiếp từ chính hình thiết kế.",
-    },
-    "note.no_local_index": {
-        "en": (
-            "Local USPTO index not built — text was checked against the live USPTO "
-            "search only. Run `python -m data.build_uspto_index` for offline coverage."
-        ),
-        "vi": (
-            "Chưa xây dựng chỉ mục USPTO cục bộ — văn bản chỉ được đối chiếu với tra "
-            "cứu USPTO trực tuyến. Chạy `python -m data.build_uspto_index` để có phạm "
-            "vi đối chiếu ngoại tuyến."
-        ),
     },
     # --- run.failed_report ----------------------------------------------
     "failed.reasoning": {

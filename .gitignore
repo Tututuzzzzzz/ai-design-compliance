@@ -15,3 +15,5 @@ next-env.d.ts
 *.db-wal
 *.db-shm
 samples/output/
+samples/designs/
+samples/*.zip

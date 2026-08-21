@@ -55,13 +55,13 @@
   "errors": {
     "error": "Error"
   },
-  "header": {
-    "title": "AI Design Compliance Agent",
-    "tagline": "Niche detection · trademark & copyright screening · SAFE / RISKY / BLOCKED"
-  },
   "nav": {
-    "new": "New analysis",
-    "batches": "Batches"
+    "dashboard": "Dashboard",
+    "import": "Import designs",
+    "history": "Batch history",
+    "watchlist": "Watchlist",
+    "settings": "Settings",
+    "soon": "soon"
   },
   "meta": {
     "targetMarkets": "Target markets",
@@ -75,12 +75,13 @@
     "ocr": "OCR",
     "ocrRapid": "RapidOCR (local)",
     "ocrVisionFallback": "Vision-model OCR (fallback)",
-    "trademarkIndex": "Trademark index",
     "workers": "Workers",
-    "marks": "marks",
-    "notBuilt": "not built",
     "noApiKey": "No API key set for this provider",
-    "trademarkHint": "Run `python -m data.build_uspto_index --daily 10` for offline matching"
+    "systemStatus": "System status",
+    "visionShort": "Vision",
+    "registerShort": "Registers",
+    "noRegister": "none reachable",
+    "noRegisterHint": "No trademark register is enabled — set USPTO_TMSEARCH_LOOKUP=true"
   },
   "job": {
     "batch": "Batch",
@@ -144,7 +145,8 @@
     "uspto_local_index": "USPTO local index",
     "uspto_live_api": "USPTO live API",
     "euipo_api": "EUIPO API",
-    "policy_rule": "Policy rule"
+    "policy_rule": "Policy rule",
+    "uspto_tmsearch": "USPTO public search"
   },
   "status": {
     "queued": "queued",

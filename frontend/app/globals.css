@@ -1,20 +1,63 @@
+/* Palette, type and component skin are lifted from the "Compliance Desktop"
+   canvas design: warm light neutrals, ink as the accent, IBM Plex Mono for
+   every number and metadata label. Light-only by design — no dark variant. */
 :root {
-  --bg: #0b0f16;
-  --surface: #131a24;
-  --surface-2: #1a2230;
-  --bg-hover: #1c2c46;
-  --border: #26313f;
-  --text: #e6edf5;
-  --muted: #8fa1b6;
-  --accent: #4f8ef7;
-  --safe: #34d399;
-  --risky: #fbbf24;
-  --blocked: #f87171;
-  --critical: #dc2626;
-  --high: #ea580c;
-  --medium: #ca8a04;
-  --low: #2563eb;
-  --radius: 10px;
+  /* Surfaces — warm neutral ramp */
+  --bg: #f4f3f0; /* canvas */
+  --surface: #ffffff; /* card */
+  --surface-2: #faf9f7; /* panel, secondary areas */
+  --surface-3: #eeece7; /* segmented-control + progress track */
+  --bg-hover: #faf9f6; /* row hover */
+  --border: #e2dfd9; /* card edge */
+  --border-strong: #d8d5cf; /* control edge: input, chip, ghost button */
+  --divider: #f0eee9; /* in-table row rule — lighter than a card edge */
+
+  /* Text */
+  --text: #191817;
+  --text-2: #33302b; /* body copy inside findings */
+  --muted: #8a857c;
+  --muted-2: #5c574e; /* secondary label, one step darker than muted */
+  --faint: #c0bbb1; /* voided numbers, e.g. confidence 0 */
+
+  /* Accent is ink, not blue */
+  --accent: #191817;
+  --accent-hover: #33302b;
+
+  /* Verdicts — each level carries a foreground and a pill background */
+  --safe: #1a7f4e;
+  --safe-bg: #e7f3ec;
+  --risky: #9a6a10;
+  --risky-bg: #faf0da;
+  --blocked: #c53030;
+  --blocked-bg: #fbe9e9;
+
+  /* Four severities. The design only specifies HIGH/MEDIUM, so `critical` is
+     derived (deeper than blocked) and `low` drops to neutral — keeping the
+     scale one hue family instead of jumping to blue at the bottom. */
+  --critical: #9b1c1c;
+  --critical-bg: #f8dcdc;
+  --high: #c53030;
+  --high-bg: #fbe9e9;
+  --medium: #9a6a10;
+  --medium-bg: #faf0da;
+  --low: #5c574e;
+  --low-bg: #eeece7;
+
+  /* Solid bar fills — denser than the pill backgrounds so they stay readable
+     at 8px tall. Consumed by the batch-history bars in a later step. */
+  --bar-safe: #3ba46e;
+  --bar-risky: #dfae3a;
+  --bar-blocked: #d95757;
+
+  --radius: 12px; /* card */
+  --radius-sm: 8px; /* control */
+
+  /* The fallback lives *inside* var() on purpose: if next/font has not injected
+     the variable, `var(--font-archivo), "Archivo", …` is invalid at computed-value
+     time and the whole declaration collapses to the initial value (a serif), not
+     to the next name in the list. */
+  --font-sans: var(--font-archivo, "Archivo"), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono, "IBM Plex Mono"), ui-monospace, Menlo, monospace;
 }
 
 * {
@@ -27,69 +70,254 @@ body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  font-size: 15px;
-  line-height: 1.55;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
-  color: var(--accent);
-  text-decoration: none;
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 a:hover {
-  text-decoration: underline;
+  color: var(--blocked);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 4px;
 }
 
 .shell {
   max-width: 1280px;
   margin: 0 auto;
-  padding: 24px 20px 80px;
+  /* The content pane scrolls now, so the old 80px tail is dead space. */
+  padding: 24px 28px 40px;
 }
 
-header.top {
-  border-bottom: 1px solid var(--border);
-  background: linear-gradient(180deg, #101724, var(--bg));
+/* --- App shell -------------------------------------------------------- */
+/* The shell owns the viewport so the rail stays put and only the pane moves. */
+.app {
+  display: grid;
+  grid-template-columns: 216px 1fr;
+  height: 100vh;
+  overflow: hidden;
 }
-header.top .inner {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 18px 20px;
+.app > .content {
+  overflow-y: auto;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--surface-2);
+  padding: 20px 0 16px;
+  overflow-y: auto;
+}
+/* Chrome, not prose — the global underline belongs to inline links only. */
+.sidebar a {
+  text-decoration: none;
+}
+.sidebar .brand {
   display: flex;
   align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
+  gap: 10px;
+  padding: 0 20px 22px;
 }
-header.top h1 {
-  font-size: 19px;
-  margin: 0;
-  letter-spacing: -0.01em;
-}
-header.top p {
-  margin: 2px 0 0;
-  color: var(--muted);
+.sidebar .brand .mark {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  background: var(--accent);
+  color: var(--bg);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-weight: 600;
   font-size: 13px;
+  border-radius: 7px;
+}
+.sidebar .brand .name {
+  display: block;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  color: var(--text);
+}
+.sidebar .brand .sub {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  margin-top: 3px;
+}
+
+.sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 10px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted-2);
+}
+a.nav-item:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.nav-item[data-active="true"],
+a.nav-item[data-active="true"]:hover {
+  background: var(--accent);
+  color: var(--bg);
+  font-weight: 600;
+}
+.nav-item[data-disabled="true"] {
+  color: var(--faint);
+  cursor: default;
+}
+.nav-item .ico {
+  width: 14px;
+  text-align: center;
+}
+.nav-item .soon {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  color: var(--faint);
+}
+
+.sidebar-foot {
+  margin-top: auto;
+  padding: 16px 16px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.status-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.status {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.status .line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.status .k {
+  color: var(--muted);
+  flex: none;
+}
+/* A model id like "gemini-3.1-flash-lite" cannot fit beside its label in 216px,
+   and this is the one row a reader actually needs — so it wraps rather than
+   ellipsising. Long values are legible in both locales; short ones stay inline. */
+.status .v {
+  color: var(--text);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.status .v[data-warn="true"] {
+  color: var(--risky);
+}
+.status .dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--safe);
+  margin-right: 5px;
+}
+.status[data-error="true"] {
+  border-color: #f0cfcf;
+  background: var(--blocked-bg);
+  color: var(--blocked);
+  line-height: 1.5;
+}
+
+/* Below the design's desktop floor the rail stacks into a strip and the page
+   goes back to scrolling as a whole. */
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: 1fr;
+    height: auto;
+    overflow: visible;
+  }
+  .sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 16px 0;
+  }
+  .sidebar nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+  .sidebar-foot {
+    margin-top: 14px;
+    flex-direction: row;
+    align-items: flex-end;
+    flex-wrap: wrap;
+  }
+  .status {
+    flex: 1;
+    min-width: 240px;
+  }
 }
 
 .card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 18px;
+  padding: 20px;
 }
 .card + .card {
   margin-top: 16px;
 }
 
 h2 {
-  font-size: 16px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
   margin: 0 0 12px;
 }
+/* Section labels ride the mono scale, matching the eyebrow text in the design. */
 h3 {
-  font-size: 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
   margin: 0 0 8px;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
 }
 
 .grid {
@@ -119,36 +347,43 @@ h3 {
 }
 
 /* --- Tabs ------------------------------------------------------------- */
+/* Segmented control: a recessed track with the active pill lifted out of it. */
 .tabs {
   display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--border);
+  gap: 6px;
+  background: var(--surface-3);
+  border-radius: 10px;
+  padding: 4px;
+  width: fit-content;
   margin-bottom: 18px;
   flex-wrap: wrap;
 }
 .tabs button {
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
+  border-radius: 7px;
   color: var(--muted);
-  padding: 10px 14px;
+  padding: 8px 14px;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
 }
 .tabs button[data-active="true"] {
   color: var(--text);
-  border-bottom-color: var(--accent);
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
 /* --- Form controls ---------------------------------------------------- */
 label {
   display: block;
-  font-size: 12px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
   color: var(--muted);
   margin-bottom: 5px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.08em;
 }
 
 input[type="text"],
@@ -156,15 +391,17 @@ input[type="file"],
 textarea,
 select {
   width: 100%;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
   color: var(--text);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 9px 11px;
-  font-size: 14px;
+  font-size: 13px;
   font-family: inherit;
 }
 textarea {
+  /* Pasted CSV rows and URLs read as data — mono keeps the columns aligned. */
+  font-family: var(--font-mono);
   min-height: 110px;
   resize: vertical;
 }
@@ -185,42 +422,59 @@ select:focus {
   flex-wrap: wrap;
 }
 .chip {
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--muted);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--muted-2);
   border-radius: 999px;
-  padding: 5px 12px;
-  font-size: 13px;
+  padding: 6px 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
   cursor: pointer;
 }
 .chip[data-on="true"] {
   border-color: var(--accent);
-  color: var(--text);
-  background: #1c2c46;
+  background: var(--accent);
+  color: var(--bg);
 }
 
 button.primary {
   background: var(--accent);
-  color: #fff;
+  color: var(--bg);
   border: none;
-  border-radius: 8px;
-  padding: 10px 18px;
+  border-radius: 9px;
+  padding: 11px 20px;
+  font-family: inherit;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
+}
+button.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
 }
 button.primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
-button.ghost {
-  background: var(--surface-2);
+/* Not `button.ghost` — the export controls are anchors, and the old selector
+   left them as bare underlined text. */
+.ghost {
+  display: inline-flex;
+  align-items: center;
+  background: var(--surface);
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   padding: 8px 14px;
+  font-family: inherit;
   font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
   cursor: pointer;
+}
+.ghost:hover {
+  border-color: var(--accent);
+  color: var(--text);
 }
 
 /* --- Badges ----------------------------------------------------------- */
@@ -229,50 +483,53 @@ button.ghost {
   align-items: center;
   gap: 6px;
   border-radius: 999px;
-  padding: 3px 11px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
 }
 .badge.SAFE {
-  background: rgba(52, 211, 153, 0.15);
+  background: var(--safe-bg);
   color: var(--safe);
 }
 .badge.RISKY {
-  background: rgba(251, 191, 36, 0.15);
+  background: var(--risky-bg);
   color: var(--risky);
 }
 .badge.BLOCKED {
-  background: rgba(248, 113, 113, 0.15);
+  background: var(--blocked-bg);
   color: var(--blocked);
 }
 .badge.PENDING {
-  background: rgba(143, 161, 182, 0.15);
+  background: var(--surface-3);
   color: var(--muted);
 }
 
 .sev {
-  font-size: 11px;
-  font-weight: 700;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
   border-radius: 5px;
   padding: 2px 7px;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 .sev.critical {
-  background: rgba(220, 38, 38, 0.2);
-  color: #fca5a5;
+  background: var(--critical-bg);
+  color: var(--critical);
 }
 .sev.high {
-  background: rgba(234, 88, 12, 0.2);
-  color: #fdba74;
+  background: var(--high-bg);
+  color: var(--high);
 }
 .sev.medium {
-  background: rgba(202, 138, 4, 0.2);
-  color: #fde047;
+  background: var(--medium-bg);
+  color: var(--medium);
 }
 .sev.low {
-  background: rgba(37, 99, 235, 0.2);
-  color: #93c5fd;
+  background: var(--low-bg);
+  color: var(--low);
 }
 
 /* --- Stats ------------------------------------------------------------ */
@@ -282,21 +539,23 @@ button.ghost {
   gap: 12px;
 }
 .stat {
-  background: var(--surface-2);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 14px;
+  padding: 14px 16px;
 }
 .stat .n {
-  font-size: 27px;
-  font-weight: 700;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
   line-height: 1.1;
 }
 .stat .k {
+  font-family: var(--font-mono);
   font-size: 11px;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.08em;
   margin-top: 3px;
 }
 
@@ -314,7 +573,9 @@ button.ghost {
 }
 .design .thumb {
   aspect-ratio: 1;
+  /* Artwork is authored on white — keep the mat white, not the warm canvas. */
   background: #fff;
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -345,7 +606,8 @@ button.ghost {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(4, 7, 12, 0.75);
+  /* A light page needs a far weaker scrim, or the modal reads as another theme. */
+  background: rgba(25, 24, 23, 0.42);
   z-index: 40;
   display: flex;
   justify-content: center;
@@ -365,9 +627,9 @@ button.ghost {
 .finding {
   border: 1px solid var(--border);
   border-left: 3px solid var(--border);
-  border-radius: 8px;
-  padding: 12px 14px;
-  background: var(--surface-2);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--surface);
 }
 .finding + .finding {
   margin-top: 10px;
@@ -385,30 +647,34 @@ button.ghost {
   border-left-color: var(--low);
 }
 .finding .t {
-  font-weight: 600;
+  font-weight: 700;
   font-size: 14px;
 }
 .finding p {
   margin: 7px 0;
   font-size: 13px;
-  color: #cbd5e1;
+  line-height: 1.5;
+  color: var(--text-2);
 }
 .finding .fix {
-  font-size: 13px;
-  background: rgba(79, 142, 247, 0.09);
-  border-radius: 6px;
-  padding: 8px 10px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-2);
+  background: var(--bg);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
   margin-top: 8px;
 }
 
 pre.reasoning {
   white-space: pre-wrap;
-  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-family: var(--font-mono);
   font-size: 12.5px;
   line-height: 1.6;
+  color: var(--text-2);
   background: var(--surface-2);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 13px;
   margin: 0;
   overflow-x: auto;
@@ -422,14 +688,22 @@ table {
 th,
 td {
   text-align: left;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--divider);
+}
+td {
+  padding: 11px 10px;
 }
 th {
+  padding: 8px 10px;
   color: var(--muted);
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+}
+tbody tr:hover {
+  background: var(--bg-hover);
 }
 
 .muted {
@@ -437,26 +711,27 @@ th {
   font-size: 13px;
 }
 .error {
-  background: rgba(248, 113, 113, 0.12);
-  border: 1px solid rgba(248, 113, 113, 0.35);
-  color: #fca5a5;
-  border-radius: 8px;
+  background: var(--blocked-bg);
+  border: 1px solid #f0cfcf;
+  color: var(--blocked);
+  border-radius: var(--radius-sm);
   padding: 10px 12px;
   font-size: 13px;
 }
 .ok {
-  background: rgba(52, 211, 153, 0.1);
-  border: 1px solid rgba(52, 211, 153, 0.3);
-  color: var(--safe);
-  border-radius: 8px;
+  background: #eef6f0;
+  border: 1px solid #cfe5d7;
+  color: #1a5c3c;
+  border-radius: var(--radius-sm);
   padding: 10px 12px;
   font-size: 13px;
+  line-height: 1.5;
 }
 
 .progress {
   height: 6px;
-  background: var(--surface-2);
-  border-radius: 999px;
+  background: var(--surface-3);
+  border-radius: 3px;
   overflow: hidden;
 }
 .progress > span {

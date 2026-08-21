@@ -130,13 +130,22 @@ class Evidence(BaseModel):
     source: Literal[
         "vision_model",
         "ocr",
-        "uspto_local_index",
         "uspto_live_api",
+        "uspto_tmsearch",
         "euipo_api",
         "policy_rule",
     ]
     detail: str
     url: str | None = None
+    covers_goods: bool | None = Field(
+        default=None,
+        description=(
+            "For register evidence: whether the cited registration's Nice classes cover "
+            "print-on-demand goods. None when the register returned no classes, or for "
+            "non-register sources. False means the mark is real but registered for "
+            "unrelated goods, so it must not escalate severity on its own."
+        ),
+    )
     reference_id: str | None = Field(
         default=None, description="e.g. USPTO serial number / registration number"
     )
