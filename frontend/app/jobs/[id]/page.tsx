@@ -125,6 +125,24 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
     setCategory("");
   }
 
+  // Same keys as the report grid, so the processing list is not a second set of
+  // rules to learn: Enter/Space opens a finished design, arrows walk the list.
+  function onProcKeyDown(e: React.KeyboardEvent, index: number, ready: boolean) {
+    if (e.key === "Enter" || e.key === " ") {
+      if (!ready) return;
+      e.preventDefault();
+      setSelected(designs[index].id);
+      return;
+    }
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const next = index + (e.key === "ArrowDown" ? 1 : -1);
+      if (next >= 0 && next < designs.length) {
+        document.getElementById(`row-${designs[next].id}`)?.focus();
+      }
+    }
+  }
+
   const subtitle = `${scanned} · ${job?.total ?? 0} ${t("proc.designs")}${
     avgSeconds ? ` · ${t("proc.about")} ${avgSeconds}${t("messages.duration")} ${t("proc.each")}` : ""
   }`;
@@ -191,11 +209,25 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
 
           <div className="report-scroll">
             <div style={{ minWidth: 680 }}>
-              {designs.map((d) => {
+              {designs.map((d, i) => {
                 const done = d.status === "done" || d.status === "failed";
                 const verdict = d.verdict ?? "PENDING";
+                // A design that has finished can be opened straight from here —
+                // waiting for the whole batch to land before reading the first
+                // verdict is the slowest part of a long scan.
+                const ready = d.status === "done";
                 return (
-                  <div key={d.id} className="proc-row">
+                  <div
+                    key={d.id}
+                    id={`row-${d.id}`}
+                    className="proc-row"
+                    role={ready ? "button" : undefined}
+                    aria-disabled={ready ? undefined : true}
+                    tabIndex={ready ? 0 : -1}
+                    data-ready={ready}
+                    onClick={() => ready && setSelected(d.id)}
+                    onKeyDown={(e) => onProcKeyDown(e, i, ready)}
+                  >
                     <div className="row" style={{ gap: 12, flexWrap: "nowrap", minWidth: 0 }}>
                       <span
                         className={`tile ${done ? verdict : "PENDING"}`}
@@ -268,9 +300,18 @@ export default function JobPage({ params }: { params: Promise<{ id: string }> })
                 <button type="button" className="btn btn-ghost" onClick={() => setView("export")}>
                   {t("report.exportReport")}
                 </button>
-                <a className="btn btn-primary" href={api.exportUrl(id, "xlsx", exportFilters)}>
+                <a className="btn btn-ghost" href={api.exportUrl(id, "xlsx", exportFilters)}>
                   {t("job.exportExcel")}
                 </a>
+                {counts.SAFE > 0 && (
+                  <a
+                    className="btn btn-primary"
+                    href={api.safeZipUrl({ job_id: id, category })}
+                    title={t("report.downloadSafeHint")}
+                  >
+                    {t("report.downloadSafe").replace("{n}", String(counts.SAFE))}
+                  </a>
+                )}
               </div>
             </div>
 

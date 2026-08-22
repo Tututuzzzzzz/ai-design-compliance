@@ -253,6 +253,118 @@ def _analyze_gemini(image_path: Path, meta: DesignMetadata, model: str) -> Visio
 
 
 # --------------------------------------------------------------------------
+# OpenRouter (one OpenAI-compatible endpoint in front of many vendors)
+# --------------------------------------------------------------------------
+
+
+def _inline_refs(schema: dict) -> dict:
+    """Resolve `$ref`/`$defs` into a self-contained schema.
+
+    Gateways that forward a schema to several different vendors generally do not
+    resolve `$defs` for us, and a dangling `$ref` is rejected as malformed rather
+    than ignored. Unlike `_gemini_schema` this keeps standard JSON Schema
+    keywords intact — the target here speaks JSON Schema, not Gemini's dialect.
+    """
+    defs = schema.get("$defs", {})
+
+    def walk(node: object) -> object:
+        if isinstance(node, list):
+            return [walk(n) for n in node]
+        if not isinstance(node, dict):
+            return node
+        if "$ref" in node:
+            name = node["$ref"].rsplit("/", 1)[-1]
+            return walk(defs.get(name, {}))
+        return {k: walk(v) for k, v in node.items() if k != "$defs"}
+
+    return walk(schema)  # type: ignore[return-value]
+
+
+def _analyze_openrouter(image_path: Path, meta: DesignMetadata, model: str) -> VisionAnalysis:
+    import httpx  # noqa: PLC0415
+
+    if not settings.openrouter_api_key:
+        raise RuntimeError(
+            "OPENROUTER_API_KEY is not set. OpenRouter keys look like "
+            "'sk-or-v1-...'; a Google AI Studio key will not work here."
+        )
+
+    data = base64.standard_b64encode(image_path.read_bytes()).decode()
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": _system_prompt(meta)},
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{data}"},
+                    },
+                    {
+                        "type": "text",
+                        "text": (
+                            f"{_context_block(meta)}"
+                            "\n\nAnalyse this design. Reply with JSON only."
+                        ),
+                    },
+                ],
+            },
+        ],
+        # Not `strict`: strict mode demands additionalProperties:false and every
+        # property in `required` across the whole tree, which Pydantic does not
+        # emit. We validate the reply ourselves in `_coerce`, so a permissive
+        # schema costs nothing and works across more of the models behind the
+        # gateway.
+        "response_format": {
+            "type": "json_schema",
+            "json_schema": {"name": "vision_analysis", "schema": _inline_refs(_schema())},
+        },
+        "max_tokens": 8192,
+    }
+
+    with httpx.Client(timeout=300) as client:
+        resp = client.post(
+            f"{settings.openrouter_base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {settings.openrouter_api_key}",
+                "Content-Type": "application/json",
+                # Identifies the caller on the OpenRouter dashboard; optional.
+                "X-Title": "ai-design-compliance",
+            },
+            json=payload,
+        )
+        if resp.status_code != 200:
+            # Surface the gateway's own message: it distinguishes an expired key
+            # from an unknown model from a provider outage, and the retry logic
+            # below keys off that text.
+            raise RuntimeError(f"OpenRouter HTTP {resp.status_code}: {resp.text[:300]}")
+        body = resp.json()
+
+    if body.get("error"):
+        raise RuntimeError(f"OpenRouter error: {str(body['error'])[:300]}")
+    choices = body.get("choices") or []
+    if not choices:
+        raise RuntimeError("OpenRouter returned no choices.")
+
+    # Log what the call actually cost. The image dominates the prompt count, so
+    # this is the number to watch when tuning RENDER_MAX_EDGE — and the only
+    # place the true figure exists, since we cannot compute image tokens locally.
+    usage = body.get("usage") or {}
+    if usage:
+        log.info(
+            "%s tokens: prompt=%s completion=%s total=%s cost=%s",
+            model,
+            usage.get("prompt_tokens"),
+            usage.get("completion_tokens"),
+            usage.get("total_tokens"),
+            usage.get("cost"),
+        )
+
+    return _coerce(choices[0].get("message", {}).get("content"))
+
+
+# --------------------------------------------------------------------------
 # Ollama (fully offline fallback)
 # --------------------------------------------------------------------------
 
@@ -299,6 +411,7 @@ def _coerce(raw: str | None) -> VisionAnalysis:
 _PROVIDERS = {
     "anthropic": _analyze_anthropic,
     "gemini": _analyze_gemini,
+    "openrouter": _analyze_openrouter,
     "ollama": _analyze_ollama,
 }
 
@@ -373,6 +486,7 @@ def breaker_snapshot(provider: str | None = None) -> dict[str, dict[str, int | s
     primary = {
         "anthropic": settings.anthropic_model,
         "gemini": settings.gemini_model,
+        "openrouter": settings.openrouter_model,
         "ollama": settings.ollama_model,
     }.get(provider_name)
     fallbacks = [m.strip() for m in (settings.vision_fallback_models or "").split(",") if m.strip()]
@@ -424,6 +538,7 @@ def analyze(image_path: Path, meta: DesignMetadata) -> tuple[VisionAnalysis, str
     primary = {
         "anthropic": settings.anthropic_model,
         "gemini": settings.gemini_model,
+        "openrouter": settings.openrouter_model,
         "ollama": settings.ollama_model,
     }[provider]
 

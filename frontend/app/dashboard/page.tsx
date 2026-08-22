@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import AccuracyPanel from "@/components/AccuracyPanel";
 import DateRangeFilter from "@/components/DateRangeFilter";
 import DesignDetail from "@/components/DesignDetail";
 import ExportView from "@/components/ExportView";
@@ -24,7 +25,11 @@ const CATEGORIES = [
   "prohibited_content",
 ];
 
-type View = "dashboard" | "export" | "history";
+type View = "dashboard" | "export" | "history" | "accuracy";
+
+/** The tab strip. "accuracy" is a destination, not a tab — it is reached from
+ *  the caveat under the stat cards and from the empty report. */
+const TABS = ["dashboard", "export", "history"] as const;
 
 /**
  * Rows fetched per window. Unscoped, the report spans every batch ever run, so
@@ -124,6 +129,10 @@ function Dashboard() {
   // The API hands back at most ROW_LIMIT rows, newest first.
   const capped = designs.length >= ROW_LIMIT;
 
+  // Nothing scanned in this window: the report has nothing to say, so the space
+  // goes to how the checker scores itself instead of an empty grid.
+  const emptyWindow = designs.length === 0;
+
   const latestScan = designs.length
     ? stamp(Math.max(...designs.map((d) => d.created_at)), lang)
     : null;
@@ -169,7 +178,7 @@ function Dashboard() {
       {error && <div className="error">{error}</div>}
 
       <div className="tabs" style={{ marginBottom: 28 }}>
-        {(["dashboard", "export", "history"] as const).map((v) => (
+        {TABS.map((v) => (
           <button
             key={v}
             type="button"
@@ -183,21 +192,27 @@ function Dashboard() {
 
       {view === "dashboard" && (
         <>
-          <StatCards designs={designs} />
+          <StatCards designs={designs} onLearnMore={() => switchView("accuracy")} />
 
           <section>
             <div className="panel-head">
               <div>
                 <h2>{t("report.title")}</h2>
                 <div className="sub">
-                  {latestScan ? `${t("report.latestScan")} ${latestScan} · ` : ""}
-                  {t("report.showing")
-                    .replace("{n}", String(visible.length))
-                    .replace("{m}", String(designs.length))}
-                  {capped && ` · ${t("report.capped").replace("{n}", String(ROW_LIMIT))}`}
+                  {emptyWindow ? (
+                    t("report.emptyWindow")
+                  ) : (
+                    <>
+                      {latestScan ? `${t("report.latestScan")} ${latestScan} · ` : ""}
+                      {t("report.showing")
+                        .replace("{n}", String(visible.length))
+                        .replace("{m}", String(designs.length))}
+                      {capped && ` · ${t("report.capped").replace("{n}", String(ROW_LIMIT))}`}
+                    </>
+                  )}
                 </div>
               </div>
-              <div className="row">
+              <div className="row" hidden={emptyWindow}>
                 <input
                   type="search"
                   value={q}
@@ -222,39 +237,61 @@ function Dashboard() {
                 <button type="button" className="btn btn-ghost" onClick={() => switchView("export")}>
                   {t("report.exportReport")}
                 </button>
-                <a className="btn btn-primary" href={api.exportAllUrl("xlsx", exportFilters)}>
+                <a className="btn btn-ghost" href={api.exportAllUrl("xlsx", exportFilters)}>
                   {t("job.exportExcel")}
                 </a>
+                {counts.SAFE > 0 && (
+                  <a
+                    className="btn btn-primary"
+                    href={api.safeZipUrl({ category, ...params(win) })}
+                    title={t("report.downloadSafeHint")}
+                  >
+                    {t("report.downloadSafe").replace("{n}", String(counts.SAFE))}
+                  </a>
+                )}
               </div>
             </div>
 
             <div style={{ marginBottom: 12 }}>{dateFilter}</div>
 
-            <div className="tabs" style={{ marginBottom: 12 }}>
-              {(["ALL", "BLOCKED", "RISKY", "SAFE"] as const).map((k) => (
-                <button key={k} type="button" aria-pressed={filter === k} onClick={() => setFilter(k)}>
-                  {k === "ALL" ? t("job.all") : `${t(`verdict.${k}`)} ${counts[k]}`}
-                </button>
-              ))}
-            </div>
+            {emptyWindow ? (
+              <div className="report-empty">
+                <AccuracyPanel lead={t("accuracy.emptyLede")} />
+              </div>
+            ) : (
+              <>
+                <div className="tabs" style={{ marginBottom: 12 }}>
+                  {(["ALL", "BLOCKED", "RISKY", "SAFE"] as const).map((k) => (
+                    <button
+                      key={k}
+                      type="button"
+                      aria-pressed={filter === k}
+                      onClick={() => setFilter(k)}
+                    >
+                      {k === "ALL" ? t("job.all") : `${t(`verdict.${k}`)} ${counts[k]}`}
+                    </button>
+                  ))}
+                </div>
 
-            <ReportTable
-              designs={visible}
-              selected={selected}
-              sortKey={sortKey}
-              sortDir={sortDir}
-              flags={flags}
-              onSort={(k) => {
-                if (k === sortKey) setSortDir((d) => -d);
-                else {
-                  setSortKey(k);
-                  setSortDir(1);
-                }
-              }}
-              onSelect={setSelected}
-              onClearFilters={clearFilters}
-            />
-            <div className="note">{t("report.confidenceNote")}</div>
+                <ReportTable
+                  designs={visible}
+                  selected={selected}
+                  sortKey={sortKey}
+                  sortDir={sortDir}
+                  flags={flags}
+                  onSort={(k) => {
+                    if (k === sortKey) setSortDir((d) => -d);
+                    else {
+                      setSortKey(k);
+                      setSortDir(1);
+                    }
+                  }}
+                  onSelect={setSelected}
+                  onClearFilters={clearFilters}
+                />
+                <div className="note">{t("report.confidenceNote")}</div>
+              </>
+            )}
           </section>
         </>
       )}
@@ -273,6 +310,17 @@ function Dashboard() {
           dateFilter={dateFilter}
           onClearFilters={clearFilters}
         />
+      )}
+
+      {view === "accuracy" && (
+        <section>
+          <div className="row" style={{ justifyContent: "flex-end", marginBottom: 8 }}>
+            <button type="button" className="btn btn-ghost" onClick={() => switchView("dashboard")}>
+              {t("accuracy.backToDashboard")}
+            </button>
+          </div>
+          <AccuracyPanel />
+        </section>
       )}
 
       {view === "history" && (

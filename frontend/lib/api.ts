@@ -1,4 +1,4 @@
-import type { Design, Health, Job } from "./types";
+import type { Accuracy, Design, Health, Job } from "./types";
 import type { Language } from "./i18n";
 
 async function json<T>(res: Response): Promise<T> {
@@ -27,6 +27,8 @@ export interface Metadata {
 
 export const api = {
   health: () => fetch("/api/health").then(json<Health>),
+
+  accuracy: () => fetch("/api/accuracy").then(json<Accuracy>),
 
   uploadFiles(files: File[], metadata: Metadata, label?: string) {
     const fd = new FormData();
@@ -102,6 +104,17 @@ export const api = {
       Object.entries(filters).filter(([, v]) => v) as [string, string][],
     );
     return `/api/jobs/${jobId}/export.${format}?${qs}`;
+  },
+
+  /** The original artwork of every SAFE design in scope, zipped.
+   *  Verdict is fixed to SAFE — that is what the button promises — but the
+   *  category and window filters are passed so the file matches the count on
+   *  the button. */
+  safeZipUrl(filters: { job_id?: string; category?: string; since?: string; until?: string }) {
+    const qs = new URLSearchParams(
+      Object.entries(filters).filter(([, v]) => v) as [string, string][],
+    );
+    return `/api/export.safe.zip?${qs}`;
   },
 
   /** Cross-batch export — same filters, no job scope. */

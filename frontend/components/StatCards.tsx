@@ -8,7 +8,14 @@ import type { Design } from "@/lib/types";
  * the date filter and the category filter both narrow the grid, and a headline
  * number that disagrees with the list under it is worse than no headline.
  */
-export default function StatCards({ designs }: { designs: Design[] }) {
+export default function StatCards({
+  designs,
+  onLearnMore,
+}: {
+  designs: Design[];
+  /** Opens the accuracy screen. Omitted where there is nowhere to go. */
+  onLearnMore?: () => void;
+}) {
   const { t } = useTranslation();
 
   const counts = { BLOCKED: 0, RISKY: 0, SAFE: 0, FAILED: 0 };
@@ -35,7 +42,17 @@ export default function StatCards({ designs }: { designs: Design[] }) {
           </div>
         )}
       </div>
-      <div className="note">{t("stat.caveat")}</div>
+      <div className="note">
+        {t("stat.caveat")}
+        {onLearnMore && (
+          <>
+            {" "}
+            <button type="button" className="link-btn" onClick={onLearnMore}>
+              {t("accuracy.seeHow")}
+            </button>
+          </>
+        )}
+      </div>
     </section>
   );
 }

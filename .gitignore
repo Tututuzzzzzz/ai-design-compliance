@@ -21,3 +21,6 @@ samples/output/
 # precisely so the test corpus does not ship third-party IP. Generate a shareable
 # set with `python -m data.evalset` instead.
 samples/designs/
+
+# Local .env backups — never commit; they hold real API keys.
+.env.bak*

@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import LanguageSwitcher from "@/components/LanguageSwitcher";
 import { useTranslation } from "@/lib/i18n";
 
 // Two entries only: the dashboard's own tab row owns the Export and History
@@ -37,7 +36,6 @@ export default function SiteHeader() {
               {t(l.key)}
             </Link>
           ))}
-          <LanguageSwitcher />
         </nav>
       </div>
     </header>

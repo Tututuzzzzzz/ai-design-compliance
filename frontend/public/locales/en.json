@@ -71,7 +71,8 @@
   "view": {
     "dashboard": "Dashboard",
     "export": "Export",
-    "history": "History log"
+    "history": "History log",
+    "accuracy": "Accuracy"
   },
   "proc": {
     "title": "Checking your designs…",
@@ -108,7 +109,10 @@
     "confidenceNote": "Confidence = how sure the AI is about its verdict, not the level of risk. Click a row for the full explanation.",
     "latestScan": "Latest scan",
     "showing": "showing {n} of {m} designs",
-    "capped": "newest {n} shown — narrow the date range for older scans"
+    "capped": "newest {n} shown — narrow the date range for older scans",
+    "emptyWindow": "No designs scanned in this range yet",
+    "downloadSafe": "Download {n} safe designs",
+    "downloadSafeHint": "The original files of every SAFE design in the current window, as a zip"
   },
   "export": {
     "title": "Export report",
@@ -328,5 +332,29 @@
     "noActivity": "No activity in the selected date range.",
     "showAll": "Show all time",
     "scanDoneOne": "Single scan completed"
+  },
+  "accuracy": {
+    "title": "How we measure accuracy",
+    "lede": "The two mistake types are not equally bad, so we track them separately and eliminate the worst one first.",
+    "emptyLede": "No designs scanned in this range yet. Here is how the check is measured before you run one — the two mistake types are not equally bad, so we track them separately and eliminate the worst one first.",
+    "missLabel": "MISS",
+    "missDetail": "A design with a real violation marked SAFE — the mistake that gets a store suspended. Eliminated first.",
+    "falseAlarmLabel": "FALSE ALARM",
+    "falseAlarmDetail": "A clean design marked BLOCKED — the mistake that makes you stop trusting the tool.",
+    "measuredOn": "Measured on a {n}-design test set",
+    "result": "Result",
+    "correctVerdicts": "Correct verdicts",
+    "correctCategory": "Correct risk category",
+    "correctNiche": "Correct niche",
+    "misses": "Misses (violation marked SAFE)",
+    "falseAlarms": "False alarms (clean marked BLOCKED)",
+    "errors": "Designs that could not be scored",
+    "speed": "Median time per design",
+    "footnote": "Results vary slightly between runs. The test can be re-run on your own designs at any time.",
+    "loading": "Loading the scores…",
+    "notRunTitle": "This build has not been scored yet.",
+    "notRunDetail": "Accuracy numbers appear here once the eval set has been run. Nothing is shown until then — a figure we cannot stand behind is worse than none.",
+    "seeHow": "See how we measure →",
+    "backToDashboard": "← Back to dashboard"
   }
 }

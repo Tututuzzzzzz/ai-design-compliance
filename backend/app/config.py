@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     uspto_db_path: Path = BASE_DIR / "var" / "uspto.db"
 
     # --- Vision provider ----------------------------------------------
-    # "anthropic" | "gemini" | "ollama"
+    # "anthropic" | "gemini" | "openrouter" | "ollama"
     vision_provider: str = "anthropic"
     anthropic_api_key: str | None = None
     anthropic_model: str = "claude-opus-5"
@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-2.0-flash"
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2-vision"
+    # OpenRouter proxies many vendors behind one OpenAI-compatible endpoint, so a
+    # Gemini model reached this way needs an `sk-or-v1-...` key, never a Google
+    # AI Studio key — the two are not interchangeable.
+    openrouter_api_key: str | None = None
+    openrouter_model: str = "google/gemini-3.5-flash"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
     # Comma-separated models tried in order when the primary is unavailable.
     vision_fallback_models: str = ""
     vision_max_attempts: int = 3

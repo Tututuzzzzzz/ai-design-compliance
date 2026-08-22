@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import csv
 import io
+import json
+import zipfile
 import logging
 import mimetypes
 import uuid
@@ -493,6 +495,111 @@ def export_sheet_xlsx(
     )
 
 
+def _original_path(design: dict[str, Any]) -> Path | None:
+    """The stored original for a design, or None if it cannot be served.
+
+    Defence in depth on the resolve check: the column is written by us, but a
+    path that lands outside the uploads dir is never streamed, whatever put it
+    there.
+    """
+    raw = design.get("path")
+    if not raw:
+        return None
+    path = Path(raw)
+    try:
+        path.resolve().relative_to(settings.uploads_dir.resolve())
+    except ValueError:
+        log.warning("Refusing original outside uploads dir for %s: %s", design.get("id"), raw)
+        return None
+    return path if path.exists() else None
+
+
+def _safe_originals_zip(
+    job_id: str | None,
+    category: str | None,
+    since: float | None,
+    until: float | None,
+) -> bytes:
+    """Zip the original artwork of every SAFE design in scope.
+
+    The point of the button is "give me the files I can go and upload", so it
+    ships the originals the user supplied, not the downscaled previews.
+
+    Designs whose original is no longer on disk are listed in MISSING.txt inside
+    the archive rather than quietly left out: a short zip that looks complete is
+    how someone ends up thinking a design was cleared when it was never checked.
+    """
+    rows = [d for d in db.list_designs(job_id, "SAFE", None, category, since, until)]
+    if not rows:
+        raise HTTPException(404, "No SAFE designs in the current selection.")
+
+    buf = io.BytesIO()
+    missing: list[str] = []
+    used: dict[str, int] = {}
+    written = 0
+
+    # STORED, not DEFLATED: PNG and JPEG are already compressed, so deflating
+    # them burns CPU on a big batch for a percent or two.
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+        for row in rows:
+            name = row.get("filename") or f"{row['id']}.bin"
+            path = _original_path(row)
+            if path is None:
+                missing.append(name)
+                continue
+
+            # Two batches can hold the same filename; suffix rather than let a
+            # later entry silently replace an earlier one.
+            stem, dot, ext = name.rpartition(".")
+            seen = used.get(name, 0)
+            used[name] = seen + 1
+            arcname = name if not seen else (f"{stem}({seen}){dot}{ext}" if dot else f"{name}({seen})")
+
+            try:
+                zf.write(path, arcname)
+                written += 1
+            except OSError as exc:
+                log.warning("Could not add %s to the safe zip: %s", path, exc)
+                missing.append(name)
+
+        if missing:
+            zf.writestr(
+                "MISSING.txt",
+                "These designs were verdict SAFE but their original file is no "
+                "longer on disk, so they are not in this archive:" + chr(10) * 2
+                + chr(10).join(sorted(missing)) + chr(10),
+            )
+
+    if not written:
+        raise HTTPException(404, "No SAFE originals are still on disk for the current selection.")
+
+    return buf.getvalue()
+
+
+@router.get("/export.safe.zip")
+def export_safe_zip(
+    job_id: str | None = None,
+    category: str | None = None,
+    since: float | None = None,
+    until: float | None = None,
+):
+    """Sync `def` for the same reason as `get_original` — this reads files."""
+    return Response(
+        content=_safe_originals_zip(job_id, category, since, until),
+        media_type="application/zip",
+        headers=_attachment("safe-designs", job_id, "zip"),
+    )
+
+
+@router.get("/jobs/{job_id}/export.safe.zip")
+def export_safe_zip_for_job(job_id: str, category: str | None = None):
+    return Response(
+        content=_safe_originals_zip(job_id, category, None, None),
+        media_type="application/zip",
+        headers=_attachment("safe-designs", job_id, "zip"),
+    )
+
+
 @router.get("/files/{name}")
 async def get_file(name: str):
     safe = Path(name).name  # never let a path escape the renders dir
@@ -520,24 +627,15 @@ def get_original(design_id: str):
     if not design:
         raise HTTPException(404, "Design not found")
 
-    raw = design.get("path")
-    if not raw:
+    if not design.get("path"):
         raise HTTPException(
             404,
             "Original file was never stored for this design — it predates "
             "original-file retention, or the fetch failed before writing it.",
         )
 
-    path = Path(raw)
-    # Defence in depth: the column is written by us, but never serve anything
-    # that does not resolve inside the uploads dir.
-    try:
-        path.resolve().relative_to(settings.uploads_dir.resolve())
-    except ValueError:
-        log.warning("Refusing original outside uploads dir for %s: %s", design_id, raw)
-        raise HTTPException(404, "File not found") from None
-
-    if not path.exists():
+    path = _original_path(design)
+    if path is None:
         raise HTTPException(404, "Original file is no longer on disk")
 
     media_type = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
@@ -561,6 +659,7 @@ async def health() -> dict[str, Any]:
     key_present = {
         "anthropic": bool(settings.anthropic_api_key),
         "gemini": bool(settings.google_api_key),
+        "openrouter": bool(settings.openrouter_api_key),
         "ollama": True,
     }.get(provider, False)
 
@@ -571,6 +670,7 @@ async def health() -> dict[str, Any]:
             "model": {
                 "anthropic": settings.anthropic_model,
                 "gemini": settings.gemini_model,
+                "openrouter": settings.openrouter_model,
                 "ollama": settings.ollama_model,
             }.get(provider),
             "configured": key_present,
@@ -586,6 +686,26 @@ async def health() -> dict[str, Any]:
         "platforms": list(PLATFORMS.keys()),
         "markets": list(MARKETS.keys()),
     }
+
+
+@router.get("/accuracy")
+async def accuracy() -> dict[str, Any]:
+    """Scores from the last `python -m data.evaluate --json` run.
+
+    Served from disk rather than computed here: scoring re-runs the whole
+    pipeline over the eval set and costs real vision-API calls, so it is a
+    deliberate command, not something a page load should trigger. Absent file
+    means nobody has scored this build yet, and the UI says exactly that rather
+    than showing a number we cannot stand behind.
+    """
+    path = settings.data_dir / "accuracy.json"
+    if not path.exists():
+        return {"available": False}
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        log.warning("accuracy.json unreadable: %s", exc)
+        return {"available": False}
 
 
 @router.get("/policies")

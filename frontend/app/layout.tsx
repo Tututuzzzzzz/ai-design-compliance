@@ -11,8 +11,6 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    // `lang` is corrected client-side once a stored preference is read; keeping
-    // "en" here matches the provider's initial state so hydration is clean.
     <html lang="en">
       <head>
         {/* Caprasimo (headings) + Figtree (body) — the Organic design system's

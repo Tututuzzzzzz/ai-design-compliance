@@ -123,3 +123,27 @@ export interface Health {
   platforms: string[];
   markets: string[];
 }
+
+/** Scores from the last `data.evaluate --json` run, served by /api/accuracy.
+ *  Everything past `available` is missing until someone has scored the build. */
+export interface Accuracy {
+  available: boolean;
+  model?: string;
+  manifest?: string;
+  generated_at?: number;
+  designs?: number;
+  scored?: number;
+  correct?: number;
+  accuracy_pct?: number | null;
+  category_hits?: number;
+  category_total?: number;
+  category_pct?: number | null;
+  niche_hits?: number;
+  niche_total?: number;
+  niche_pct?: number | null;
+  misses?: number;
+  false_alarms?: number;
+  wrong_tier?: number;
+  errors?: number;
+  median_latency_s?: number | null;
+}

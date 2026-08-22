@@ -12,6 +12,9 @@ the accuracy numbers for a submission.
     # score your own designs
     python -m data.evaluate --manifest /path/to/manifest.csv
 
+    # publish the numbers to the dashboard (writes var/accuracy.json)
+    python -m data.evaluate --json
+
 Manifest columns: filename, expected (pipe-separated acceptable verdicts),
 expected_category (optional), note (optional).
 
@@ -26,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import json
 import re
 import statistics
 import sys
@@ -234,12 +238,59 @@ def report(res: Result) -> None:
             print(f"      x {m}")
 
 
+def as_dict(res: Result, manifest: Path, generated_at: float) -> dict:
+    """The shape the dashboard reads. Counts stay alongside the percentages so a
+    small eval set cannot be dressed up as a big one."""
+    scored = res.total - len(res.errors)
+    return {
+        "available": True,
+        "model": res.model,
+        "manifest": manifest.name,
+        "generated_at": generated_at,
+        "designs": res.total,
+        "scored": scored,
+        "correct": res.correct,
+        "accuracy_pct": round(res.correct / scored * 100) if scored else None,
+        "category_hits": res.category_hits,
+        "category_total": res.category_total,
+        "category_pct": (
+            round(res.category_hits / res.category_total * 100) if res.category_total else None
+        ),
+        "niche_hits": res.niche_hits,
+        "niche_total": res.niche_total,
+        "niche_pct": round(res.niche_hits / res.niche_total * 100) if res.niche_total else None,
+        "misses": len(res.misses),
+        "false_alarms": len(res.false_alarms),
+        "wrong_tier": len(res.other),
+        "errors": len(res.errors),
+        "median_latency_s": (
+            round(statistics.median(res.latencies), 1) if res.latencies else None
+        ),
+        "miss_detail": res.misses,
+        "false_alarm_detail": res.false_alarms,
+    }
+
+
+def write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    print("\nWrote " + str(path))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--manifest", type=Path, help="CSV manifest; default builds the synthetic set")
     ap.add_argument("--models", nargs="*", help="model ids to compare (default: configured model)")
     ap.add_argument("--markets", nargs="*", default=["US"])
     ap.add_argument("--platforms", nargs="*", default=["etsy", "amazon_merch"])
+    ap.add_argument(
+        "--json",
+        type=Path,
+        nargs="?",
+        const=settings.data_dir / "accuracy.json",
+        help="also write the scores as JSON; the dashboard reads "
+        "var/accuracy.json (the default when the flag is given bare)",
+    )
     args = ap.parse_args()
 
     if args.manifest:
@@ -291,6 +342,14 @@ def main() -> int:
                 f"{len(r.false_alarms):6} {lat:6.1f}s"
             )
         print(f"\nRecommended: {ranked[0].model}")
+
+    if args.json:
+        # With several models, quote the one we would actually ship: fewest
+        # misses first, since a miss is the error that gets a store suspended.
+        best = sorted(
+            results, key=lambda r: (len(r.misses), len(r.false_alarms), -r.correct)
+        )[0]
+        write_json(args.json, as_dict(best, manifest, time.time()))
 
     return 0
 
