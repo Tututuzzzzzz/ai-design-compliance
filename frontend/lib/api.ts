@@ -25,6 +25,35 @@ export interface Metadata {
   language?: Language;
 }
 
+/** Fallbacks used only until /api/health answers — the server owns the real
+ *  numbers, these just keep the guard from being absent on the first paint. */
+export const FALLBACK_LIMITS = { max_upload_mb: 60, max_request_mb: 95 };
+
+/** An upload that no longer makes progress must fail, not hang. A proxy that
+ *  rejects an oversized body answers while the browser is still sending, and
+ *  Chrome leaves that request pending forever — which is indistinguishable
+ *  from a slow upload unless something eventually aborts it. Generous, so a
+ *  genuinely large batch on a slow link still finishes. */
+const UPLOAD_TIMEOUT_MS = 10 * 60 * 1000;
+
+async function postForm<T>(path: string, fd: FormData): Promise<T> {
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), UPLOAD_TIMEOUT_MS);
+  try {
+    return await fetch(path, { method: "POST", body: fd, signal: ac.signal }).then(json<T>);
+  } catch (e) {
+    if ((e as Error).name === "AbortError") {
+      throw new Error(
+        `Upload stopped responding after ${UPLOAD_TIMEOUT_MS / 60000} minutes. ` +
+          "Try fewer files at once.",
+      );
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const api = {
   health: () => fetch("/api/health").then(json<Health>),
 
@@ -35,9 +64,7 @@ export const api = {
     files.forEach((f) => fd.append("files", f));
     fd.append("metadata", JSON.stringify(metadata));
     if (label) fd.append("label", label);
-    return fetch("/api/analyze/upload", { method: "POST", body: fd }).then(
-      json<{ job_id: string; queued: number }>,
-    );
+    return postForm<{ job_id: string; queued: number }>("/api/analyze/upload", fd);
   },
 
   uploadCsv(csv: File, attachments: File[], metadata: Metadata, label?: string) {
@@ -46,8 +73,9 @@ export const api = {
     attachments.forEach((f) => fd.append("attachments", f));
     fd.append("metadata", JSON.stringify(metadata));
     if (label) fd.append("label", label);
-    return fetch("/api/analyze/csv", { method: "POST", body: fd }).then(
-      json<{ job_id: string; queued: number; skipped: unknown[] }>,
+    return postForm<{ job_id: string; queued: number; skipped: unknown[] }>(
+      "/api/analyze/csv",
+      fd,
     );
   },
 

@@ -120,6 +120,19 @@ async def analyze_upload(
     label: str | None = Form(None),
 ):
     meta = _parse_metadata(metadata)
+
+    # The proxy in front of this app rejects an oversized body mid-upload, which
+    # a browser reports as a stalled request rather than an error. Answering here
+    # too means a direct caller gets the same reason the UI shows.
+    request_limit = settings.max_request_mb * 1024 * 1024
+    total = sum(f.size or 0 for f in files)
+    if total > request_limit:
+        raise HTTPException(
+            413,
+            f"This batch is {total / 1048576:.0f} MB; one upload can carry "
+            f"{settings.max_request_mb} MB. Send it in smaller batches.",
+        )
+
     job_id = _new_job("upload", label or f"{len(files)} uploaded file(s)", meta)
 
     accepted = 0
@@ -682,6 +695,10 @@ async def health() -> dict[str, Any]:
             "live_lookup": settings.uspto_live_lookup,
         },
         "queue": {"pending": queue.pending(), "workers": settings.worker_concurrency},
+        "limits": {
+            "max_upload_mb": settings.max_upload_mb,
+            "max_request_mb": settings.max_request_mb,
+        },
         "formats": sorted(loader.SUPPORTED_EXT),
         "platforms": list(PLATFORMS.keys()),
         "markets": list(MARKETS.keys()),

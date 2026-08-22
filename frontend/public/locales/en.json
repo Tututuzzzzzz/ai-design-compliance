@@ -155,7 +155,9 @@
     "marked": "region(s) marked",
     "confidence": "Confidence",
     "provider": "Provider",
-    "duration": "s"
+    "duration": "s",
+    "fileTooLarge": "{name} is {size} — one file can be at most {limit} MB",
+    "batchTooLarge": "this batch is {size}, over the {limit} MB limit for one upload — remove a file or analyse in two batches"
   },
   "errors": {
     "error": "Error"

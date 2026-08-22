@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     # --- Pipeline ------------------------------------------------------
     worker_concurrency: int = 4
     max_upload_mb: int = 60
+    # Ceiling on one whole multipart request, not on a single file. A batch is
+    # rejected before it is sent because the wall it would otherwise hit is
+    # nginx's client_max_body_size — and nginx answers 413 while the browser is
+    # still uploading, which leaves the request pending instead of failed.
+    # Kept under Cloudflare's 100 MB per-request cap, the real hard limit.
+    max_request_mb: int = 95
     fetch_timeout_s: int = 60
     fetch_max_attempts: int = 3
     fetch_retry_jitter_s: float = 0.35

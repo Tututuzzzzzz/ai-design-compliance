@@ -122,6 +122,9 @@ export interface Health {
   formats: string[];
   platforms: string[];
   markets: string[];
+  /** Server-owned upload ceilings, in MB. `max_request_mb` covers one whole
+   *  multipart body; `max_upload_mb` covers a single file within it. */
+  limits: { max_upload_mb: number; max_request_mb: number };
 }
 
 /** Scores from the last `data.evaluate --json` run, served by /api/accuracy.

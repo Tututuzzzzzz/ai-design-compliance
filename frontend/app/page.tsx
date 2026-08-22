@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import MetadataPicker from "@/components/MetadataPicker";
-import { api, type Metadata } from "@/lib/api";
+import { api, FALLBACK_LIMITS, type Metadata } from "@/lib/api";
 import { useTranslation } from "@/lib/i18n";
 
 type Tab = "upload" | "csv" | "link" | "folder";
@@ -12,6 +12,9 @@ const ACCEPT = ".png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.gif,.heic,.psd,.pdf,.ai,.
 
 /** Identity for de-duplicating a re-picked or re-dropped file. */
 const keyOf = (f: File) => `${f.name}:${f.size}:${f.lastModified}`;
+
+const MB = 1024 * 1024;
+const mb = (bytes: number) => `${(bytes / MB).toFixed(bytes < 10 * MB ? 1 : 0)} MB`;
 
 export default function Home() {
   const { t, lang } = useTranslation();
@@ -31,6 +34,19 @@ export default function Home() {
   // The hero only earns its space before the first batch exists. `null` means
   // "not known yet" so neither state flashes while the request is in flight.
   const [firstRun, setFirstRun] = useState<boolean | null>(null);
+
+  // Upload ceilings come from the server so this page and the proxy in front of
+  // it can never disagree about what is too big.
+  const [limits, setLimits] = useState(FALLBACK_LIMITS);
+
+  useEffect(() => {
+    api
+      .health()
+      .then((h) => h.limits && setLimits(h.limits))
+      .catch(() => {
+        /* keep the fallbacks — a guard from stale numbers still beats none */
+      });
+  }, []);
 
   useEffect(() => {
     api
@@ -93,6 +109,25 @@ export default function Home() {
       let res: { job_id: string };
       if (tab === "upload") {
         if (!files.length) throw new Error(t("messages.chooseDesignFile"));
+        const oversized = files.find((f) => f.size > limits.max_upload_mb * MB);
+        if (oversized) {
+          throw new Error(
+            t("messages.fileTooLarge")
+              .replace("{name}", oversized.name)
+              .replace("{size}", mb(oversized.size))
+              .replace("{limit}", String(limits.max_upload_mb)),
+          );
+        }
+        // Caught here rather than in flight: the proxy answers 413 while the
+        // browser is still sending, and the browser reports that as a request
+        // that never finishes.
+        if (totalBytes > limits.max_request_mb * MB) {
+          throw new Error(
+            t("messages.batchTooLarge")
+              .replace("{size}", mb(totalBytes))
+              .replace("{limit}", String(limits.max_request_mb)),
+          );
+        }
         res = await api.uploadFiles(files, meta);
       } else if (tab === "csv") {
         if (!csv) throw new Error(t("messages.chooseCsvFile"));
@@ -114,6 +149,9 @@ export default function Home() {
       setBusy(false);
     }
   }
+
+  const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+  const overBudget = totalBytes > limits.max_request_mb * MB;
 
   const analyzeLabel = busy
     ? `${t("buttons.submit")}…`
@@ -207,10 +245,24 @@ export default function Home() {
             </div>
             {files.length > 0 && (
               <div className="row" style={{ justifyContent: "flex-end", marginTop: 14 }}>
+                {/* The running total is here because the ceiling is on the batch,
+                    not on any one file — a selection can only be judged as a whole. */}
+                <span className={overBudget ? "error" : "muted"} style={{ marginRight: "auto" }}>
+                  {mb(totalBytes)}
+                  {overBudget &&
+                    ` — ${t("messages.batchTooLarge")
+                      .replace("{size}", mb(totalBytes))
+                      .replace("{limit}", String(limits.max_request_mb))}`}
+                </span>
                 <button type="button" className="btn btn-ghost" onClick={() => setFiles([])}>
                   {t("buttons.removeAll")}
                 </button>
-                <button type="button" className="btn btn-primary btn-lg" onClick={submit} disabled={busy}>
+                <button
+                  type="button"
+                  className="btn btn-primary btn-lg"
+                  onClick={submit}
+                  disabled={busy || overBudget}
+                >
                   {analyzeLabel}
                 </button>
               </div>
